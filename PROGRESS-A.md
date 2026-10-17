@@ -10,9 +10,9 @@
 - [x] Day0 上午:git init + main 空提交(cc7c5f5);建分支 `ai-a`/`ai-b`;A 停在 `ai-a`
 - [x] Day0 上午:契约首提交 —— §2 符号逐字落地(proj.go / crs.go / ellipsoid.go /
   gribshape.go / projstr.go),函数体骨架;同提交 .gitignore / PROGRESS-A.md
-- [ ] Day0 下午:ellipsoid.go 全量实现 + 单测
-- [ ] Day0 下午:gribshape.go(GRIB shape 1-11 → 椭球,平移 simple-grib 逻辑)+ 单测
-- [ ] Day1:crs.go Parse 全量 + projstr.go 往返 + impl_latlong
+- [x] Day0 下午:ellipsoid.go 全量实现 + 单测(3d10229)
+- [x] Day0 下午:gribshape.go(GRIB shape 1-11 → 椭球,平移 simple-grib 逻辑)+ 单测(3d10229)
+- [x] Day1:crs.go Parse 全量 + projstr.go 往返 + impl_latlong(+ mlfn.go Karney 矩形纬)
 - [ ] Day2:impl_eqc + xcheck/xcheck_test.go 消费端
 - [ ] Day3:impl_geos(sweep x/y)+ ForwardBatch/InverseBatch + bench + README
 
@@ -60,3 +60,16 @@
 - 2026-10-17 [A] day0-下午:ellipsoid.go 全量(表 +f/rf/es/R/b 组合推导、
   fail-loud 校验)+ gribshape.go(shape 0-11 平移 simple-grib earthDimension
   逻辑;3/7 双轴缺口按 C#1 明确报错)+ 两文件单测;go test 全绿。
+- 2026-10-17 [A] day1:crs.go Parse 全量(别名归一/默认值/EPSG 特例/'r' 弧度后缀/
+  域校验)、projstr.go String() 往返、impl_latlong.go(恒等投影 + validLonLat/
+  normLonDeg 共享域助手)、mlfn.go(Karney 六阶 φ↔μ 级数 + rectifyingRadius +
+  clenshawDelta,为 eqc/geos 供子午线弧);配套 crs_test.go / impl_latlong_test.go。
+  全绿。转轨期间修了两处自己测试/口径 bug:(1) xcheck 前的 EPSG 特征比对 near()
+  容差 1e-9 太松,GRS80 与 WGS84 的 b 差 ~1.05e-4 m 被吞掉 → 4269 误判 4326,
+  收紧至 1e-12(≈1.3e-5 m);(2) 弧度后缀测试误用无类型常量精确折叠当期望值,
+  与实现的双舍入口径差 2e-14 度,改为与实现同序的运行期表达式。
+- 2026-10-17 [A] 注记(给 B):共享 go test 中 `TestGoldenStere`
+  (stere_test.go:113)失败 —— 点 (0,-89.9) forward x 差 ≈ +4.6e-4 m
+  (13297575846.740891 vs 13297575846.740435),超出 1e-6 m 门槛约两个数量级
+  且 y 也有 8e-11 级差,呈现系统性而非舍入噪声(疑 stereEffectiveK 或
+  lat_ts 处理与 golden 生成侧口径不一致)。属 B 轨文件,B 自查。C#1 仍待 B 回执。

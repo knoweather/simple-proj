@@ -1,0 +1,278 @@
+package proj
+
+import (
+	"errors"
+	"math"
+	"reflect"
+	"testing"
+)
+
+// crsSame 比较两次 Parse 的 CRS 语义字段相等(往返测试用)。
+func crsSame(t *testing.T, name string, a, b *CRS) {
+	t.Helper()
+	if a.Proj != b.Proj {
+		t.Errorf("%s: Proj 不一致 %q vs %q", name, a.Proj, b.Proj)
+	}
+	if !reflect.DeepEqual(a.Params, b.Params) {
+		t.Errorf("%s: Params 不一致:\n  %#v\n  %#v", name, a.Params, b.Params)
+	}
+	if !reflect.DeepEqual(a.UnknownParams, b.UnknownParams) {
+		t.Errorf("%s: UnknownParams 不一致\n  %#v\n  %#v", name, a.UnknownParams, b.UnknownParams)
+	}
+	if a.Ellipsoid != b.Ellipsoid {
+		t.Errorf("%s: Ellipsoid 不一致:\n  %#v\n  %#v", name, a.Ellipsoid, b.Ellipsoid)
+	}
+}
+
+func TestParseBasic(t *testing.T) {
+	c, err := Parse("+proj=geos +lon_0=140.7 +h=35785863 +ellps=WGS84 +units=m +no_defs")
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if c.Proj != "geos" {
+		t.Errorf("Proj: %q", c.Proj)
+	}
+	for k, want := range map[string]float64{
+		"lon_0": 140.7, "h": 35785863, "x_0": 0, "y_0": 0, "lat_0": 0, "k_0": 1,
+	} {
+		if got := c.Params[k]; got != want {
+			t.Errorf("Params[%s]=%v want %v", k, got, want)
+		}
+	}
+	if c.UnknownParams["no_defs"] != "" {
+		t.Errorf("no_defs 旗标应存 UnknownParams 为空串, got %q", c.UnknownParams["no_defs"])
+	}
+	c2, err := Parse(c.String())
+	if err != nil {
+		t.Fatalf("Parse(String()): %v", err)
+	}
+	crsSame(t, "geos 往返", c, c2)
+}
+
+func TestParseAliases(t *testing.T) {
+	a, err := Parse("+proj=tmerc +k=0.9996 +lon_0=105 +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("k 别名: %v", err)
+	}
+	if a.Params["k_0"] != 0.9996 {
+		t.Errorf("k→k_0 归一失败: %v", a.Params["k_0"])
+	}
+	b, err := Parse("+proj=tmerc +k0=0.9996 +lon0=105 +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("k0/lon0 别名: %v", err)
+	}
+	crsSame(t, "k vs k0", a, b)
+	c, err := Parse("+proj=lcc +lat1=30 +lat_2=60 +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("lat1 别名: %v", err)
+	}
+	if c.Params["lat_1"] != 30 || c.Params["lat_2"] != 60 {
+		t.Errorf("lat1/lat_2: %v", c.Params)
+	}
+	d, err := Parse("+proj=eqc +latts=33.5 +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("latts 别名: %v", err)
+	}
+	if d.Params["lat_ts"] != 33.5 {
+		t.Errorf("latts: %v", d.Params)
+	}
+}
+
+func TestParseLonglatAlias(t *testing.T) {
+	a, err := Parse("+proj=longlat +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if a.Proj != "latlong" {
+		t.Errorf("longlat 应常规化为 latlong, got %q", a.Proj)
+	}
+	b, err := Parse("+proj=latlong +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	crsSame(t, "longlat/latlong", a, b)
+	if a.String() != "+proj=longlat +ellps=WGS84" {
+		t.Errorf("String() 必须保留原始串, got %q", a.String())
+	}
+}
+
+func TestParseRadianSuffix(t *testing.T) {
+	c, err := Parse("+proj=geos +lon_0=1.570796r +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	// 与实现同口径:运行期 float64 运算(变量形式,不做编译期常量精确折叠,
+	// 否则与 double 双舍入差 O(1ulp) ≈ 2e-14 度)。
+	rad := 1.570796
+	want := rad * 180 / math.Pi
+	if c.Params["lon_0"] != want {
+		t.Errorf("'r' 后缀: got %v want %v", c.Params["lon_0"], want)
+	}
+	// 非度数参数拒收 'r' 后缀
+	if _, err := Parse("+proj=geos +h=1.5r"); err == nil {
+		t.Errorf("非角度参数 +h=1.5r 应报错")
+	}
+}
+
+func TestParseEPSG(t *testing.T) {
+	t4326, err := Parse("EPSG:4326")
+	if err != nil {
+		t.Fatalf("EPSG:4326: %v", err)
+	}
+	if t4326.Proj != "latlong" || !near(t4326.Ellipsoid.A, 6378137) {
+		t.Errorf("EPSG:4326 形态: %#v", t4326)
+	}
+	if t4326.EPSG() != 4326 {
+		t.Errorf("EPSG(): %d", t4326.EPSG())
+	}
+	// String() 回放规范 proj 串且可再吸入
+	if s := t4326.String(); s != "+proj=latlong +ellps=WGS84" {
+		t.Errorf("String(): %q", s)
+	}
+	t2, err := Parse(t4326.String())
+	if err != nil {
+		t.Fatalf("Parse(String(EPSG:4326)): %v", err)
+	}
+	if t2.Ellipsoid != t4326.Ellipsoid || t2.Proj != t4326.Proj {
+		t.Errorf("EPSG 规范串往返: %#v", t2)
+	}
+	// 往返稳定:二次 String 化后同串
+	if t4326.String() != t2.String() {
+		t.Errorf("String 往返不稳定: %q vs %q", t4326.String(), t2.String())
+	}
+
+	t3857, err := Parse("epsg:3857")
+	if err != nil {
+		t.Fatalf("epsg:3857: %v", err)
+	}
+	if t3857.Proj != "merc" || !t3857.Ellipsoid.Sphere || !near(t3857.Ellipsoid.A, 6378137) {
+		t.Errorf("EPSG:3857 形态: %#v", t3857)
+	}
+	if t3857.EPSG() != 3857 {
+		t.Errorf("EPSG(): %d", t3857.EPSG())
+	}
+	// 等价写法特征识别(非字面量路径)
+	t3, err := Parse("+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +x_0=0 +y_0=0 +units=m")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if t3.EPSG() != 3857 {
+		t.Errorf("merc 球体应识别为 3857, got %d", t3.EPSG())
+	}
+	// NAD83 → 4269
+	t4269, err := Parse("+proj=latlong +ellps=GRS80")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if t4269.EPSG() != 4269 {
+		t.Errorf("latlong+GRS80 应识别为 4269, got %d", t4269.EPSG())
+	}
+	// 不支持的码报错
+	if _, err := Parse("EPSG:2180"); err == nil {
+		t.Errorf("EPSG:2180 应报错(v0 未收录)")
+	}
+}
+
+func TestParseGoldenCRSEnd2End(t *testing.T) {
+	// xcheck 侧将要消费的 9 条 CRS 字符串必须全部可解析(此处不含 mer 参数等
+	// B 轨专属投影的注册检查 —— NewProjection 属于各自轨道的测试)。
+	for _, crs := range []string{
+		"+proj=latlong +ellps=WGS84",
+		"+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +units=m",
+		"+proj=geos +lon_0=140.7 +h=35785863 +x_0=0 +y_0=0 +a=6378137 +b=6356752.3 +units=m +sweep=x",
+		"+proj=geos +lon_0=0 +h=35785863 +ellps=WGS84 +sweep=y",
+		"+proj=stere +lat_0=90 +lat_ts=60 +lon_0=-100 +ellps=WGS84",
+		"+proj=laea +lat_0=45 +lon_0=10 +ellps=WGS84 +x_0=0 +y_0=0",
+		"+proj=lcc +lat_1=30 +lat_2=60 +lat_0=0 +lon_0=100 +ellps=WGS84",
+		"+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0 +y_0=0 +units=m",
+		"+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84",
+	} {
+		c, err := Parse(crs)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", crs, err)
+		}
+		c2, err := Parse(c.String())
+		if err != nil {
+			t.Fatalf("Parse(String(%q)): %v", crs, err)
+		}
+		crsSame(t, crs, c, c2)
+	}
+}
+
+func TestParseSweepStorage(t *testing.T) {
+	c, err := Parse("+proj=geos +sweep=x +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if c.UnknownParams["sweep"] != "x" {
+		t.Errorf("sweep 应存 UnknownParams(决策 D1), got %+v", c.UnknownParams)
+	}
+	if got := paramString(c, "sweep", "y"); got != "x" {
+		t.Errorf("paramString(sweep): %q", got)
+	}
+	c2, _ := Parse("+proj=geos +ellps=WGS84")
+	if got := paramString(c2, "sweep", "y"); got != "y" {
+		t.Errorf("sweep 缺省应按 PROJ>=6 口径回落 y, got %q", got)
+	}
+}
+
+func TestParseUnknownParams(t *testing.T) {
+	c, err := Parse("+proj=geos +wktext +towgs84=123,456,789 +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if c.UnknownParams["wktext"] != "" || c.UnknownParams["towgs84"] != "123,456,789" {
+		t.Errorf("未知参数应原样保留: %#v", c.UnknownParams)
+	}
+}
+
+func TestParseErrors(t *testing.T) {
+	cases := []string{
+		"",
+		"   ",
+		"+lat_0=10 +ellps=WGS84",            // 缺 +proj
+		"+proj=abc +ellps=WGS84",            // 未知投影
+		"+proj=geos +lon_0=abc",             // 数值错
+		"+proj=geos +h",                     // 数值缺值
+		"+proj=geos +units=km",              // 非 m
+		"+proj=eqc +lat_ts=95 +ellps=WGS84", // 纬度出界
+		"+proj=geos +lon_0=500",             // 经度出界
+		"+proj=geos +k_0=0",                 // k_0 非正
+		"+proj=merc +ellps=未知椭球",            // 未知椭球
+		"+proj=merc +a=0",                   // 长半轴非法(由 ellipsoid 报)
+	}
+	for _, s := range cases {
+		if _, err := Parse(s); err == nil {
+			t.Errorf("Parse(%q) 应报错", s)
+		}
+	}
+}
+
+func TestParseDuplicatedKeyLastWins(t *testing.T) {
+	c, err := Parse("+proj=geos +lon_0=10 +lon_0=20 +ellps=WGS84")
+	if err != nil {
+		t.Fatalf("%v", err)
+	}
+	if c.Params["lon_0"] != 20 {
+		t.Errorf("同键后者胜, got %v", c.Params["lon_0"])
+	}
+}
+
+func TestNewProjectionDispatch(t *testing.T) {
+	// 已注册(latlong)
+	c, _ := Parse("+proj=latlong +ellps=WGS84")
+	projection, err := c.NewProjection()
+	if err != nil {
+		t.Fatalf("latlong NewProjection: %v", err)
+	}
+	if projection.CRS() != c {
+		t.Errorf("CRS() 应回传绑定实例")
+	}
+	// 未注册投影(+proj 合法但 impl 未登记于 factories)应报错不 panic
+	// (B 轨 stere 已注册,故用合成名;不能用 Parse 构造,knownProj 会拒收)
+	c2 := &CRS{Proj: "pseudo_no_impl"}
+	_, err = c2.NewProjection()
+	if err == nil || errors.Is(err, ErrDomain) {
+		t.Errorf("未注册投影应报非 ErrDomain 错误: %v", err)
+	}
+}
