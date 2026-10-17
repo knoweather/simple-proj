@@ -19,7 +19,10 @@
 - [x] Day2 下半:xcheck/xcheck_test.go 消费端(密集 golden:latlong/eqc
   全绿 —— forward 最大 5.4e-9 m / inverse 1.5e-11°;geos skip 待 Day3 收紧;
   NaN 字面量 ": NaN"→"__NaN__" 容错解码,expectNaN 兼容 true/0.0)
-- [ ] Day3:impl_geos(sweep x/y)+ ForwardBatch/InverseBatch + bench + README
+- [x] Day3:impl_geos(sweep x/y,球/椭球)—— golden 收紧全绿:geos_x/geos_y
+  forward ≤4.2e-9 m、inverse ≤5.4e-12°、全部 659/685 特例(含逆向域外探针)
+  过;球体路径 probe9/probe9b 双参照;批量语义(D2)测试即 proj_batch_test.go。
+- [ ] Day3 剩余:bench + README/LICENSE;Day4 门槛:race/vet/交叉编译/coverage ≥85%。
 - [ ] Day3:impl_geos(sweep x/y)+ ForwardBatch/InverseBatch + bench + README
 
 ## 决策记录(A 轨,B 侧关注的部分)
@@ -88,6 +91,17 @@
   子串,宽替换会连键名一起炸**,踩过一次)。latlong forward 1099 点/inverse
   1089 点全过(偏 0);eqc 1099/1090 全过(forward ≤5.4e-9 m、inverse ≤1.5e-11°)。
   geos_x/geos_y 两个 runGolden 在注册前 skip,Day3 合入后自动收紧。
+- 2026-10-17 [A] day3:impl_geos.go(PROJ 9.8 geos.cpp 语义移植:球体无可见性
+  检查、椭球 (rg−Vx)·Vx−Vy²−Vz²/rp²<0 → ErrDomain、inverse 三次方程 det<0 →
+  ErrDomain;sweep 缺省 y、k_0 忽略)全过。**消费端收紧**:TestXCheckGeos 从
+  skip 变为真断言,geos_x 435 fwd + 431 inv + 659 特例、geos_y 407+405+685
+  全绿 —— 最大偏差 forward 4.2e-9 m、inverse 5.4e-12°。踩坑记一笔:golden
+  specials 有两种形态,{lon,lat}=正向域外探针、{x,y}=逆向域外探针
+  ("inverse far outside visible disc" 的 lon/lat 字段实际装的是 x/y 米值),
+  消费端按字段存在性分派(errors.Is ErrDomain)。
+- 2026-10-17 [A] day3-附:proj_batch_test.go 落 D2 批量语义(1e-9-度门);
+  impl_geos_test.go 球体 probe9b 网格(fwd 1.9e-9 m/inv 1.4e-14°)+ sweep
+  x/y 差异哨兵 + h 缺省报错对齐(pyproj 亦拒)+ 域内值 1e-6 m 门。
 - 2026-10-17 [A] 注记(给 B):共享 go test 中 `TestGoldenStere`
   (stere_test.go:113)失败 —— 点 (0,-89.9) forward x 差 ≈ +4.6e-4 m
   (13297575846.740891 vs 13297575846.740435),超出 1e-6 m 门槛约两个数量级

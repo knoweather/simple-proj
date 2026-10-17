@@ -74,9 +74,11 @@ type entry struct {
 }
 
 type special struct {
-	Desc      string   `json:"desc"`
-	Lon       nanF     `json:"lon"`
-	Lat       nanF     `json:"lat"`
+	Desc      string `json:"desc"`
+	Lon       *nanF  `json:"lon"` // {lon,lat} 形态 → 正向域外探针
+	Lat       *nanF  `json:"lat"`
+	X         *nanF  `json:"x"` // {x,y} 形态 → 逆向域外探针
+	Y         *nanF  `json:"y"`
 	ExpectNaN boolLike `json:"expectNaN"`
 }
 
@@ -196,10 +198,21 @@ func xcheckSpecials(t *testing.T, name string, p proj.Projection, cs []special) 
 		if !bool(s.ExpectNaN) {
 			continue
 		}
-		x, y, err := p.Forward(float64(s.Lon), float64(s.Lat))
-		if !math.IsNaN(x) || !math.IsNaN(y) || !errors.Is(err, proj.ErrDomain) {
-			t.Errorf("%s special[%d](%s): (%v,%v) 期望定义域外 (NaN,NaN,ErrDomain), got (%v,%v,%v)",
-				name, i, s.Desc, s.Lon, s.Lat, x, y, err)
+		switch {
+		case s.X != nil: // {x,y} 逆向域外
+			lon, lat, err := p.Inverse(float64(*s.X), float64(*s.Y))
+			if !math.IsNaN(lon) || !math.IsNaN(lat) || !errors.Is(err, proj.ErrDomain) {
+				t.Errorf("%s special[%d](%s): Inverse(%v,%v) 期望 (NaN,NaN,ErrDomain), got (%v,%v,%v)",
+					name, i, s.Desc, *s.X, *s.Y, lon, lat, err)
+			}
+		case s.Lon != nil: // {lon,lat} 正向域外
+			x, y, err := p.Forward(float64(*s.Lon), float64(*s.Lat))
+			if !math.IsNaN(x) || !math.IsNaN(y) || !errors.Is(err, proj.ErrDomain) {
+				t.Errorf("%s special[%d](%s): Forward(%v,%v) 期望 (NaN,NaN,ErrDomain), got (%v,%v,%v)",
+					name, i, s.Desc, *s.Lon, *s.Lat, x, y, err)
+			}
+		default:
+			t.Errorf("%s special[%d](%s): 既无 x/y 也无 lon/lat", name, i, s.Desc)
 		}
 	}
 }
