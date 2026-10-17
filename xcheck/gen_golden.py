@@ -101,6 +101,21 @@ SPECIALS = {
 
 PARAM_RE = re.compile(r"\+([a-zA-Z_0-9]+)=([-0-9.e+]+)")
 
+# Only ellipsoid-defining tokens may survive into the geographic source CRS. Keeping
+# projection tokens (+h, +lat_ts, +sweep, ...) in a longlat CRS makes PROJ build a
+# different pipeline and the numbers come out swapped — verified against pyproj 3.8.
+ELLPS_KEYS = {"a", "b", "R", "rf", "f", "es", "ellps", "datum"}
+
+
+def geostring(proj):
+    parts = ["+proj=longlat"]
+    for tok in proj.split():
+        if tok.startswith("+"):
+            key = tok[1:].split("=")[0]
+            if key in ELLPS_KEYS:
+                parts.append(tok)
+    return " ".join(parts)
+
 
 def params(proj):
     out = {}
@@ -123,6 +138,8 @@ def finite(pair):
 
 
 def num(v):
+    if not math.isfinite(v):
+        raise ValueError("non-finite value cannot be written to JSON: %r" % v)
     return repr(float(v))
 
 
@@ -163,9 +180,8 @@ def main():
     summary = []
     for name, proj in CASES.items():
         tgt = CRS.from_user_input(proj)
-        # Geographic source built from the *same* string with only +proj swapped:
-        # identical ellipsoid/datum => pure projection, no datum shift.
-        geo = CRS.from_user_input(re.sub(r"\+proj=\w+", "+proj=longlat", proj))
+        # Geographic source with the same ellipsoid => pure projection, no datum shift.
+        geo = CRS.from_user_input(geostring(proj))
         fwd = Transformer.from_crs(geo, tgt, always_xy=True)
         inv = Transformer.from_crs(tgt, geo, always_xy=True)
 
@@ -185,6 +201,7 @@ def main():
             raise SystemExit("%s: centre sanity check failed (datum shift?): (%r, %r)" % (name, cx, cy))
 
         forward, inverse, specials = [], [], []
+        rt_warn = 0
 
         # grid
         for i in range(N):
@@ -202,6 +219,8 @@ def main():
                     specials.append({"desc": "inverse of own forward point failed",
                                      "x": x, "y": y, "expectNaN": True})
                     continue
+                if abs(norm_lon(rl) - lon) > 1e-9 or abs(la - lat) > 1e-9:
+                    rt_warn += 1
                 inverse.append({"x": x, "y": y, "lon": norm_lon(rl), "lat": la})
 
         # extra sanity points
@@ -210,26 +229,26 @@ def main():
             if finite((x, y)):
                 forward.append({"lon": lon, "lat": lat, "x": x, "y": y})
 
-        # domain probes
+        # domain probes — recorded in `specials` (forward array stays pure grid data).
+        # Non-finite pyproj results (PROJ HUGE_VAL) are never written to JSON: the
+        # contract says the Go side answers NaN, so only expectNaN is recorded.
         for probe in SPECIALS[name]:
+            rec = dict(probe)
             if "lon" in probe:
                 x, y = fwd.transform(probe["lon"], probe["lat"])
-                rec = dict(probe)
                 if finite((x, y)):
-                    rec.update({"x": x, "y": y, "expectNaN": False})
-                    forward.append(rec)
+                    rec["x"], rec["y"] = x, y
+                    rec["expectNaN"] = False
                 else:
-                    specials.append({"desc": probe["desc"], "lon": probe["lon"],
-                                     "lat": probe["lat"], "expectNaN": True})
+                    rec["expectNaN"] = True
             else:
                 rl, la = inv.transform(probe["x"], probe["y"])
-                rec = dict(probe)
                 if finite((rl, la)):
-                    rec.update({"lon": norm_lon(rl), "lat": la, "expectNaN": False})
-                    specials.append(rec)
+                    rec["lon"], rec["lat"] = norm_lon(rl), la
+                    rec["expectNaN"] = False
                 else:
-                    specials.append({"desc": probe["desc"], "x": probe["x"],
-                                     "y": probe["y"], "expectNaN": True})
+                    rec["expectNaN"] = True
+            specials.append(rec)
 
         path = os.path.join(out_dir, name + ".json")
         obj = {
@@ -242,11 +261,11 @@ def main():
             "specials": specials,
         }
         write_json(path, obj)
-        summary.append((name, len(forward), len(inverse), len(specials)))
+        summary.append((name, len(forward), len(inverse), len(specials), rt_warn))
 
     print("wrote %d golden files to %s" % (len(summary), out_dir))
-    for name, nf, ni, ns in summary:
-        print("  %-16s forward=%4d inverse=%4d specials=%d" % (name, nf, ni, ns))
+    for name, nf, ni, ns, rw in summary:
+        print("  %-16s forward=%4d inverse=%4d specials=%d rt_warn=%d" % (name, nf, ni, ns, rw))
 
 
 if __name__ == "__main__":

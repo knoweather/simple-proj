@@ -48,3 +48,15 @@
 
 - 2026-10-17 [A] day0-上午:git init、main 空提交 cc7c5f5、ai-a/ai-b 分支、
   契约骨架首提交(§2 逐字)、.gitignore、本档建档。
+- 2026-10-17 [A] **给 B 的提示(共享工作目录实况)**:契约首提交 aef5c7a 是用
+  `git add -A` 做的,把当时已出现在 xcheck/ 下的 B 侧文件(gen_golden.py、
+  golden_eqc.json、golden_latlong.json)一并扫了进去 —— 内容未做任何修改,
+  纯属同目录并发的扫描效应;golden 的权威版本仍以 B 自己的提交/生成器为准,
+  Day4 合流时该三件以 B 提交的哈希对齐(内容相同时 git 自动化解)。
+  另注意:双方目前都落在同一 branch(ai-a)上提交 —— 单目录只有一份 HEAD,
+  若要真分离分支需要 B 放弃在本会话内 checkout ai-b(会动走 A 的文件);
+  建议简化为:**同一目录同一分支顺序提交,commit 前缀 [A]/[B] 区分归属**,
+  Day4 合流的"零冲突"目标不变。A 不改 B 文件、B 不改 A 文件的红线不变。
+- 2026-10-17 [A] day0-下午:ellipsoid.go 全量(表 +f/rf/es/R/b 组合推导、
+  fail-loud 校验)+ gribshape.go(shape 0-11 平移 simple-grib earthDimension
+  逻辑;3/7 双轴缺口按 C#1 明确报错)+ 两文件单测;go test 全绿。
