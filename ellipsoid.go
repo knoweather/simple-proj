@@ -100,7 +100,15 @@ func EllipsoidFromParams(params map[string]float64, ellpsName string) (Ellipsoid
 		return newEllipsoid(a, a) // 仅 +a:正球体(PROJ 语义)
 	}
 
-	// 4) 默认 WGS84
+	// 4) 孤立短轴/扁率类键(无 +a):PROJ 拒收("major axis is not given",
+	// pyproj 实测 b/es/f/rf 单独给均报错),fail-loud,不静默当 WGS84
+	for _, key := range []string{"b", "rf", "f", "es"} {
+		if _, ok := get(key); ok {
+			return Ellipsoid{}, fmt.Errorf("proj: +%s 需要与 +a 同给(缺长半轴)", key)
+		}
+	}
+
+	// 5) 默认 WGS84
 	return newEllipsoidFromRF(wgs84Ref.a, wgs84Ref.rf)
 }
 
