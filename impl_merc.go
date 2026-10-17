@@ -145,7 +145,7 @@ func (s *mercProj) Forward(lon, lat float64) (float64, float64, error) {
 	}
 	x, y := s.kernel.forward(geoDegToRad(lon), geoDegToRad(lat))
 	if math.IsNaN(x) || math.IsNaN(y) {
-		return math.NaN(), math.NaN(), ErrDomain
+		return math.NaN(), math.NaN(), domainErr("outside", fmt.Sprintf("lon=%v lat=%v", lon, lat))
 	}
 	return s.x0 + s.scale*x, s.y0 + s.scale*y, nil
 }
@@ -153,7 +153,7 @@ func (s *mercProj) Forward(lon, lat float64) (float64, float64, error) {
 func (s *mercProj) Inverse(x, y float64) (float64, float64, error) {
 	lon, lat, ok := s.kernel.inverse((x-s.x0)/s.scale, (y-s.y0)/s.scale)
 	if !ok {
-		return math.NaN(), math.NaN(), ErrDomain
+		return math.NaN(), math.NaN(), domainErr("outside", fmt.Sprintf("x=%v y=%v", x, y))
 	}
 	// Normalize in radians BEFORE converting to degrees: x/(a*factor) is
 	// unbounded (|x| up to 1e12 m in the golden probe = 1.6e5 rad), and taking

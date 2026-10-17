@@ -184,6 +184,28 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
     (参考文件记 rt_lon/rt_lat),良态点自动退化为 §2.5 绝对 1e-9 deg 门。
     建议 §2.5 侧写:往返门适用于良态点,外围点以 pyproj 往返为参照。
   - 末态门:vet 0 / 测试全绿 / 覆盖率 92.2% / gofmt(LF 规范形)干净。
+- 2026-10-17 [B·续] **goproj 融合(C#14,用户指示"把好的部分融进来")**:
+  评审 `C://Users//64517//GolandProjects//goproj`(用户手写的 cgo 版,617 行)后,
+  融合两项、明确不做四项:
+  - **已融合**:
+    ① `impl_info.go` `proj.Info(p) (ProjectionInfo, error)` —— goproj `Info()`
+       (PJ_PROJ_INFO)的对应物:proj 名/描述/规范串/EPSG/球椭球/HasInverse/单位/
+       域规则/精度口径。**包级函数而非接口方法**——§2.1 接口冻结
+       (CRS/Forward/Inverse),加方法是 §5 契约变更;B 侧新增文件即不碰冻结面。
+    ② `domain_reason.go` `DomainError{Reason,Detail}`(Unwrap 到 ErrDomain)——
+       goproj `proj_context_errno_string` 的思想:B 轨五投影的域外返回从裸
+       sentinel 升级为带原因(far-pole/antipode/ce-limit/degenerate/outside),
+       `errors.Is(ErrDomain)` 与 proj.go 的 D2 批量语义零影响(A 轨消费端与
+       xcheck 全部照旧通过);tmerc_test.go 的 errorsIsDomain 辅助随之改为
+       errors.Is(原来写 `== ErrDomain` 是个潜在坑,本次修正)。
+  - **明确不做(记录理由)**:z/t 4D 坐标(Forward 签名冻结,重采样场景 2D 够用)、
+    datum/crs_to_crs/pipeline(README 能力边界明文的战略选择)、LogLevel
+    (goproj 自己也没接线,且日志钩子要动 A 的 proj.go 批量路径)、
+    map 构造入口(Parse 串已覆盖,避免 API 膨胀)。
+  - 顺手记录一个 PROJ 语义细节:stere 斜轴对跖点**不**报域错(kernel denom==0
+    是精确比较,FP 残差 ~1e-16,给巨大有限值;PROJ 9.8.1 同款行为;只有 laea
+    用 EPS10 拦得住)。
+  - 末态门:测试全绿 / vet 0 / 覆盖率 92.2% / gofmt(LF)干净。
 - 2026-10-17 [B·续] **README.md 扩写(应用户要求;§1 属 A 的文件,请 A review)**:
   在**完整保留 A 原文**(快速上手/能力边界/精度与对拍/公共 API 契约/simple-grib
   桥接/协作/许可)的基础上,补:项目背景(为什么做/为什么不用 pyproj/双 AI 协作)、

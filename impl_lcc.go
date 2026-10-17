@@ -195,7 +195,7 @@ func (s *lccProj) Forward(lon, lat float64) (float64, float64, error) {
 	}
 	x, y := s.kernel.forward(geoDegToRad(lon), geoDegToRad(lat))
 	if math.IsNaN(x) || math.IsNaN(y) {
-		return math.NaN(), math.NaN(), ErrDomain
+		return math.NaN(), math.NaN(), domainErr(lccDomainReason(lat, s.kernel.n), fmt.Sprintf("lon=%v lat=%v", lon, lat))
 	}
 	return s.x0 + x, s.y0 + y, nil
 }
@@ -203,7 +203,7 @@ func (s *lccProj) Forward(lon, lat float64) (float64, float64, error) {
 func (s *lccProj) Inverse(x, y float64) (float64, float64, error) {
 	lon, lat, ok := s.kernel.inverse(x-s.x0, y-s.y0)
 	if !ok {
-		return math.NaN(), math.NaN(), ErrDomain
+		return math.NaN(), math.NaN(), domainErr("outside", fmt.Sprintf("x=%v y=%v", x, y))
 	}
 	return geoNormLon(geoRadToDeg(lon)), geoRadToDeg(lat), nil
 }

@@ -14,6 +14,7 @@ package proj
 // running the exact path everywhere is safe even for inputs inside 3 deg.
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
@@ -258,7 +259,9 @@ func TestTmercFrozenSignature(t *testing.T) {
 	}
 }
 
-// errorsIsDomain is a tiny local helper so this test file need not import errors.
+// errorsIsDomain uses errors.Is (not ==) so DomainError-wrapped domain
+// failures still match — proj.go's batch judge uses errors.Is for the same
+// reason (COORDINATION §2.5: ErrDomain stays the single sentinel).
 func errorsIsDomain(err error) bool {
-	return err == ErrDomain
+	return errors.Is(err, ErrDomain)
 }

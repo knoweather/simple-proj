@@ -34,6 +34,8 @@ simple-proj 是 simple-grib / simple-sat 气象卫星数据栈里的**投影底�
 | 批量 API `ForwardBatch` / `InverseBatch` | ✅ | 1e6 点 ~29-240 ms；D2 错误语义 |
 | GRIB shape_of_the_earth → 椭球 | ✅ | shape 0-11 + 双轴 3/7（`GRIBEllipsoidAxes`） |
 | 线程安全 | ✅ | Projection 不可变、无状态，可并发共享 |
+| 元数据自省 `Info()` | ✅ | proj 名/描述/域规则/有无逆/精度口径（PJ_PROJ_INFO 对应物） |
+| 域外原因 `DomainError` | ✅ | `errors.As` 取 far-pole/antipode/ce-limit…；`errors.Is(ErrDomain)` 不变 |
 | 依赖 / cgo | 零 / 无 | 仅标准库；4 平台交叉编译验证 |
 
 ## 快速上手
@@ -75,6 +77,28 @@ x, y, err := p.Forward(0, 0)             // geos: 地球背面
 if errors.Is(err, proj.ErrDomain) {
     // (x, y) == (NaN, NaN); 调用方决定跳过还是记簿
 }
+```
+
+**域外原因**——`ErrDomain` 保持唯一 sentinel（`errors.Is` 判定不变），B 轨投影
+额外返回携带原因的 `DomainError`，批量重采样时可区分“地平线外/远极点/超带”：
+
+```go
+var de *proj.DomainError
+if errors.As(err, &de) {
+    log.Printf("skip: %s (%s)", de.Reason, de.Detail) // far-pole / antipode / ce-limit / ...
+} else if errors.Is(err, proj.ErrDomain) {
+    // A 轨投影(latlong/eqc/geos)只带 sentinel,无原因
+}
+```
+
+**元数据自省**——问一个实例“你是什么、有没有逆、域规则是什么”：
+
+```go
+info, _ := proj.Info(p)
+info.Name        // "tmerc"
+info.Domain      // "|Ce| ≤ 2.623395162778 rad(赤道约 ±81.7° 中央子午线圈外)"
+info.HasInverse  // true(本库 9 投影全部有逆)
+info.Accuracy    // golden 实测精度口径
 ```
 
 **输入校验**——经度 > 360°、纬度 > 90° 是普通 error（非 ErrDomain）；
@@ -157,6 +181,8 @@ fixture 网格； fixture 手册见 `xcheck/README.md`。
 - 类型：`proj.CRS`、`proj.Projection`
 - 函数：`Parse` → `NewProjection` → `Forward`
 （批量见 `ForwardBatch`/`InverseBatch`；错误用 `errors.Is(err, proj.ErrDomain)` 判定。）
+- 增强(不冻结,C#14):`proj.Info(p)` 元数据自省;`proj.DomainError` 域外原因
+  (`errors.As` 取 `Reason`,`errors.Is(ErrDomain)` 语义不变)。
 
 ## simple-grib 桥接（放在 simple-sat 的 geom 包，不在本库）
 

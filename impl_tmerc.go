@@ -367,7 +367,7 @@ func (s *tmercProj) Forward(lon, lat float64) (float64, float64, error) {
 	}
 	x, y := s.kernel.forward(geoDegToRad(lon), geoDegToRad(lat))
 	if math.IsNaN(x) || math.IsNaN(y) {
-		return math.NaN(), math.NaN(), ErrDomain
+		return math.NaN(), math.NaN(), domainErr(tmercDomainReason(s.kernel), fmt.Sprintf("lon=%v lat=%v", lon, lat))
 	}
 	return s.x0 + x, s.y0 + y, nil
 }
@@ -375,7 +375,7 @@ func (s *tmercProj) Forward(lon, lat float64) (float64, float64, error) {
 func (s *tmercProj) Inverse(x, y float64) (float64, float64, error) {
 	lon, lat, ok := s.kernel.inverse(x-s.x0, y-s.y0)
 	if !ok {
-		return math.NaN(), math.NaN(), ErrDomain
+		return math.NaN(), math.NaN(), domainErr(tmercDomainReason(s.kernel), fmt.Sprintf("x=%v y=%v", x, y))
 	}
 	// PROJ's pipeline: adjlon(lam + lam0) in radians, then to degrees.
 	return geoNormLon(geoRadToDeg(geoAdjLonPi(lon + s.kernel.lon0))), geoRadToDeg(lat), nil
