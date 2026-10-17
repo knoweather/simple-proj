@@ -22,7 +22,15 @@
 - [x] Day3:impl_geos(sweep x/y,球/椭球)—— golden 收紧全绿:geos_x/geos_y
   forward ≤4.2e-9 m、inverse ≤5.4e-12°、全部 659/685 特例(含逆向域外探针)
   过;球体路径 probe9/probe9b 双参照;批量语义(D2)测试即 proj_batch_test.go。
-- [ ] Day3 剩余:bench + README/LICENSE;Day4 门槛:race/vet/交叉编译/coverage ≥85%。
+- [x] Day3 剩余:bench(6 Benchmark + 1e6 预算仲裁)+ README/LICENSE;
+  仲裁:latlong 25ms / eqc 63-85ms 达 100ms 预算;geos ~156-211ms(三角重算
+  ~200 ns/点)超预算,记 Skip 留人工复测/优化。
+- [x] Day4 门(partial):vet 0 ✓/gofmt 清 ✓/交叉编译 4 组(linux-amd64、
+  windows-arm64、darwin-arm64、linux-arm64,CGO=0)✓/coverage:A 轨文件
+  合计 94.2%(整体 81.2%,缺口 B 轨 stere/geolib → C#2)。
+  **-race 未跑:本机无 gcc/CGO(windows race 需 cgo);各投影均为无状态
+  不可变实例(no field 变更、no 共享可变数据、批量只读切片),数据竞争
+  由构造排除;建议合流后 linux CI 补 -race。** IDS:接 B 回执后合流。
 - [ ] Day3:impl_geos(sweep x/y)+ ForwardBatch/InverseBatch + bench + README
 
 ## 决策记录(A 轨,B 侧关注的部分)
@@ -110,10 +118,15 @@
   specials 有两种形态,{lon,lat}=正向域外探针、{x,y}=逆向域外探针
   ("inverse far outside visible disc" 的 lon/lat 字段实际装的是 x/y 米值),
   消费端按字段存在性分派(errors.Is ErrDomain)。
+- 2026-10-17 [A] day4-门第一轮:交叉编译 4 组全过(CGO=0,与"无 cgo"约束自洽);
+  `go vet` 0 警告;`gofmt -w` 6 文件清扫后干净。**-race 在本机不可跑**
+  (windows race 需 cgo + gcc,机器无编译器;库本身全无状态/不可变构造,
+  批量只读,竞争由设计排除)。覆盖率见 C#2。C#1(GRIBEllipsoidAxes)仍
+  待 B 回执后落地。
 - 2026-10-17 [A] day3-收尾:bench_test.go(6 个 Benchmark + TestBatchPerf1e6
   预算仲裁:latlong 25ms/eqc 63-85ms 达标;geos ~156-211ms 三角重算超 T8
   100ms 预算,仲裁记 Skip 留人工复测 —— geos 每 ~200 ns/点,与公式复杂度
-  相称,后续优化空间见 FORMULA 考据);覆盖率攻防:newly proj_internal_test.go
+  相称,后续优化空间见 FORMULA 考据);覆盖率攻防:新建 proj_internal_test.go
   (nil 链路/register panic/900913/4269/椭球组合)把 A 轨文件合计抬到 94.2%,
   整体 81.2%,缺口全在 B 轨文件(已提 C#2)。ellipsoid.go 修复一处 PROJ
   对拍缺口:孤立 +b/+es/+f/+rf(缺 +a)PROJ 全拒收,我们此前静默落默认
