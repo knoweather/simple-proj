@@ -408,7 +408,8 @@
     {"lon": 0.0, "lat": 79.6875, "x": 0.0, "y": 5413973.990650889},
     {"lon": 11.25, "lat": 79.6875, "x": 194863.1569178196, "y": 5411035.452558006},
     {"lon": 22.5, "lat": 79.6875, "x": 381620.9770364181, "y": 5402360.754940516},
-    {"lon": 0.0, "lat": 0.0, "x": 0.0, "y": 0.0}
+    {"lon": 0.0, "lat": 0.0, "x": 0.0, "y": 0.0},
+    {"lon": 70.0, "lat": 0.0, "x": 5324746.613562037, "y": 0.0}
   ],
   "inverse": [
     {"x": -381620.9770364181, "y": -5402360.754940516, "lon": -22.500000000015206, "lat": -79.68750000000647},
@@ -1503,7 +1504,6 @@
     {"desc": "grid point outside domain", "lon": 168.75, "lat": 85.0, "expectNaN": true},
     {"desc": "grid point outside domain", "lon": 180.0, "lat": 85.0, "expectNaN": true},
     {"desc": "far side of Earth, outside satellite view", "lon": 180.0, "lat": 0.0, "expectNaN": true},
-    {"desc": "inverse far outside visible disc", "x": 9000000000.0, "y": -9000000000.0, "expectNaN": true},
-    {"desc": "sweep=y sign check at lon_0+70", "lon": 70.0, "lat": 0.0, "x": 5324746.613562037, "y": 0.0, "expectNaN": 0.0}
+    {"desc": "inverse far outside visible disc", "x": 9000000000.0, "y": -9000000000.0, "expectNaN": true}
   ]
 }

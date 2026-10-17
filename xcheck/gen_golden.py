@@ -153,6 +153,16 @@ def existing_generated(path):
     return None
 
 
+def fmt(v):
+    if isinstance(v, str):
+        return json.dumps(v)
+    if v is True:
+        return "true"
+    if v is False:
+        return "false"
+    return num(v)
+
+
 def write_json(path, obj):
     """Stable, diff-friendly layout: header pretty, one record per line."""
     lines = ["{"]
@@ -162,9 +172,7 @@ def write_json(path, obj):
         lines.append('  "%s": [' % key)
         recs = obj[key]
         for i, rec in enumerate(recs):
-            body = ", ".join('"%s": %s' % (k, json.dumps(v) if isinstance(v, str)
-                                           else ("true" if v is True else num(v)))
-                             for k, v in rec.items())
+            body = ", ".join('"%s": %s' % (k, fmt(v)) for k, v in rec.items())
             lines.append("    {" + body + "}" + ("," if i < len(recs) - 1 else ""))
         lines.append("  ]" + ("," if key != "specials" else ""))
     lines.append("}")
@@ -229,26 +237,26 @@ def main():
             if finite((x, y)):
                 forward.append({"lon": lon, "lat": lat, "x": x, "y": y})
 
-        # domain probes — recorded in `specials` (forward array stays pure grid data).
-        # Non-finite pyproj results (PROJ HUGE_VAL) are never written to JSON: the
-        # contract says the Go side answers NaN, so only expectNaN is recorded.
+        # domain probes. Finite answers go to forward/inverse as ordinary records;
+        # only out-of-domain probes land in `specials`, and then they carry just the
+        # input coordinates + desc + expectNaN — exactly the frozen schema (§2.4).
+        # Non-finite pyproj results (PROJ HUGE_VAL) are never written to JSON.
         for probe in SPECIALS[name]:
-            rec = dict(probe)
             if "lon" in probe:
                 x, y = fwd.transform(probe["lon"], probe["lat"])
                 if finite((x, y)):
-                    rec["x"], rec["y"] = x, y
-                    rec["expectNaN"] = False
+                    forward.append({"lon": probe["lon"], "lat": probe["lat"], "x": x, "y": y})
                 else:
-                    rec["expectNaN"] = True
+                    specials.append({"desc": probe["desc"], "lon": probe["lon"],
+                                     "lat": probe["lat"], "expectNaN": True})
             else:
                 rl, la = inv.transform(probe["x"], probe["y"])
                 if finite((rl, la)):
-                    rec["lon"], rec["lat"] = norm_lon(rl), la
-                    rec["expectNaN"] = False
+                    inverse.append({"x": probe["x"], "y": probe["y"],
+                                    "lon": norm_lon(rl), "lat": la})
                 else:
-                    rec["expectNaN"] = True
-            specials.append(rec)
+                    specials.append({"desc": probe["desc"], "x": probe["x"],
+                                     "y": probe["y"], "expectNaN": True})
 
         path = os.path.join(out_dir, name + ".json")
         obj = {
