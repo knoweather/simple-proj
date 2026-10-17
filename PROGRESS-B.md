@@ -21,6 +21,10 @@
 
 **五个 B 轨投影全部收口。** 上一会话的"文件未提交"注记已过时——304dea3 起 B 的文件都在库里了。
 
+- [x] C#8:`xcheck/README.md` 落地(fixture schema + 生成器用法 + 容差口径 + 再生策略)。
+- [x] Day4 合流:由 A 落锤 —— main fast-forward 至 50f53db(含 B 全部提交)、tag
+      `v0.1.0-projsubset`(5deef93);C#1/C#2/C#9/C#10/C#11 全部回执关闭。
+
 ## golden fixture 现状(权威 = pyproj 3.8.0 / PROJ 9.8.1)
 
 | fixture | fwd | inv | specials | crs |
@@ -108,19 +112,23 @@ forward 最大 **2.971e-7 m**,inverse 最大 **1.378e-12 deg**,2 个 specials �
 - **C#5 ±180 经度比对**:不变。
 - **C#6 golden_test.go 归属**:不变。
 - **C#7 往返容差在定义域边缘不可达**:不变。
-- **C#8 `xcheck/README.md`**:仍未写(B 提议认领,排期在收尾之后)。
-- **C#9 inverse 相对容差(新)**:§2.5 的 inverse 门槛 1e-9 deg 在极端坐标上不可达——
-  golden_merc 的 (1e12, 1e12) 探针弧度经度 ~1.6e5,其双精度 ulp 单独就 ~1.7e-9 deg,
-  任何实现对不上。merc_test 用 `max(1e-9, |x|/a·180/π·2.3e-16)`,即 C#3 相对下限思想
-  延伸到 inverse 轴。建议 §2.5 补一句"inverse 容差同 forward,极端坐标按相对下限"。
-- **C#10 复用 A 的 mlfn.go 助手(新)**:impl_tmerc.go 复用了同包的 `polyval` /
-  `clenshawDelta` / `rectifyingRadius`(A 在 day2 为 eqc 落地,数学与 PROJ 的
-  pj_polyval/pj_clenshaw/pj_rectifying_radius 逐位一致),没有重复定义也没有改 A 的文件。
-  注意 `mlfn.go` 不在 COORDINATION §1 所有权表里,建议补登("A 拥有"应无争议)。
-- **C#11 行尾符(新,环境性)**:仓库 `core.autocrlf=true`,工作区是 CRLF、仓库存 LF;
-  go1.27.1 的 gofmt 输出 LF,于是 `gofmt -l` 会把所有 CRLF 文件都列出来(内容并没有问题)。
-  本会话把 B 的文件统一成 LF(gofmt 规范形)后提交。建议 §4 的 gofmt 自查加一句
-  "以 LF 规范形为准,勿用 `gofmt -w` 全仓重写(会踩 A 的文件)"。
+- **C#8 `xcheck/README.md`**:已由 B 认领完成(`xcheck/README.md`:fixture 清单、
+  schema 两种 specials 形态、生成器用法、消费侧容差口径 C#3/C#5/C#9、再生策略、
+  已知坑)。**已结案。**
+- **C#9 inverse 相对容差**:A 已 C#9-ACK 回执:merc_test 内沿用相对下限即可,
+  冻结契约文本不动,以"侧写注记"留论。**已结案。**
+- **C#10 mlfn.go 所有权补登**:A 已 C#10-ACK 并在 COORDINATION §1 补登
+  mlfn.go → A。**已结案。**
+- **C#11 行尾符/gofmt 口径**:A 已 C#11-ACK:仓库存 LF、工作区 CRLF 属
+  autocrlf 预期,gofmt 自查以"LF 规范形无 diff"为准,双方都不 `gofmt -w` 全仓
+  重写。**已结案。**
+- **C#1-ACK**:上一轮已回执;A 已在 50f53db 落地 `GRIBEllipsoidAxes`(shape 3/7
+  双轴)。**已结案。**
+- **C#2 覆盖率**:整体 92.0% ≥ 85%,A 已结案。
+- **C#12 建议 gitignore 追加 `.workbuddy-ai/`(新,待 A 决定)**:B 的会话记忆落在
+  `D:\simple-proj\.workbuddy-ai/`(daily log / MEMORY.md,agent 私有),不该进仓库;
+  `.gitignore` 是 A 的文件(B 不动),建议 A 补一行 `.workbuddy-ai/`——否则哪天一次
+  `git add -A`(day0 就发生过一次扫描效应)会把 B 的私有笔记扫进提交。
 
 ## 覆盖率(B 文件,`go tool cover -func`)
 
@@ -151,15 +159,24 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
   inverse 漏 `Cn +=` 实部、球面分支漏框架 ×a、测试侧 `+k`→`k_0` 别名;golden_tmerc
   1091/1081/9 全绿(7.5e-9 m)。**B 轨五投影自此全部收口。**
 - 2026-10-17 [B·续] Day4 门(B 侧):vet 0 / gofmt 内容干净(LF 规范形,C#11)/ 覆盖率 92.0% /
-  交叉编译 4 组过 / race 待 linux CI(cgo 限制)。
+  交叉编译 4 组过 / race 待 linux CI(cgo 限制)。提交 80c70f4。
+- 2026-10-17 [A] day4-合流落锤:A 已把 main fast-forward 至 50f53db(含 B 全部提交),
+  落地 GRIBEllipsoidAxes(C#1),C#9/C#10/C#11 全部 ACK 回执,覆盖率结案(92.0%),
+  打 tag **v0.1.0-projsubset**(5deef93)。
+- 2026-10-17 [B·续] **C#8 收尾**:`xcheck/README.md` 落地——9 fixture 清单与计数、
+  schema(specials 两种探针形态 + expectNaN 语义)、生成器用法(网格/附加点/域探针/
+  源 CRS 过滤/健全性校验)、消费侧容差口径(§2.5 + C#3/C#5/C#9)、再生策略(改 fixture
+  须双方记账)、已知坑(expectNaN 键名宽替换炸解析等)。C#8 结案。
 
 ## HANDOVER(下个会话可直接接)
 
-1. B 轨五投影(latlong 归 A;stere/laea/lcc/merc/tmerc 归 B)全部 golden 绿,
-   剩余 B 侧待办只有 **C#8 的 `xcheck/README.md`**(fixture schema + 生成器用法 + 容差口径)。
-2. Day4 全仓门:双方 merge 回 `main`(契约未改,应零冲突)、A 打 tag
-   `v0.1.0-projsubset`;`go test -race` 留待 linux CI。
-3. 跨轨未决:C#9(inverse 相对容差入 §2.5)、C#10(mlfn.go 补登所有权)、C#11(gofmt 行尾符口径)。
-4. 工具环境提醒:`go` 不在 PATH,用 `C:\Users\64517\go\go1.27.1\bin\go.exe`;
+1. **B 轨全部结案**:五投影(stere/laea/lcc/merc/tmerc)+ geolib + golden 生成器 +
+   fixture + xcheck/README.md 全部落地并 golden 绿;Day4 合流由 A 完成
+   (main → 50f53db,tag `v0.1.0-projsubset`),跨轨事项 C#1/C#2/C#8/C#9/C#10/C#11
+   全部关闭。
+2. 全仓遗留(非 B 专属):`go test -race` 待 linux CI(windows 无 CGO);
+   geos bench ~200 ns/点超 T8 预算的 Skip 仲裁(A 留的人工复测项)。
+3. 工具环境提醒:`go` 不在 PATH,用 `C:\Users\64517\go\go1.27.1\bin\go.exe`;
    **pyproj 在系统 Python 里**(`C:\Users\64517\AppData\Local\Programs\Python\Python313\python.exe`),
    默认的 `python`/`pip` 是 WorkBuddy 托管 Python,没有 pyproj。
+4. 后继 simple-sat 按 DESIGN §5 / README「公共 API 契约」接入本库。
