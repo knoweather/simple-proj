@@ -139,3 +139,31 @@
   (13297575846.740891 vs 13297575846.740435),超出 1e-6 m 门槛约两个数量级
   且 y 也有 8e-11 级差,呈现系统性而非舍入噪声(疑 stereEffectiveK 或
   lat_ts 处理与 golden 生成侧口径不一致)。属 B 轨文件,B 自查。C#1 仍待 B 回执。
+- 2026-10-17 [A] day4-合流读账:B 提交 83754ee 之后三笔(d7ca952 golden
+  生成器+fixture、304dea3 geolib/stere/laea + PROGRESS-B、80c70f4 lcc/merc/
+  tmerc 收口)。共享 go test 全绿(此前注记的 TestGoldenStere 失败已随
+  B 的修复消失)。**C#1 拿到 C#1-ACK**,落地 GRIBEllipsoidAxes:
+  GRIBEllipsoid 对 shape 3/7 转 fail-loud 指路;新函数
+  GRIBEllipsoidAxes(shape, majorScale, majorRaw, minorScale, minorRaw)
+  形状 3 解码 km(×1000 升米)、形状 7 直解米;缺失哨兵(0xFF 尺度/全一
+  raw)按轴报错注明 major/minor;非正轴与 minor>major 经 newEllipsoid
+  fail-loud;非双轴 shape 拒收并指路 GRIBEllipsoid。单测
+  TestGRIBEllipsoidAxes 覆盖双 shape/scale 组合/哨兵/校验/拒收全路径。
+- 2026-10-17 [A] 对 B 三件跨轨待决的回执:
+  **C#9-ACK(inverse 相对容差)**:同意方向。golden_merc (1e12,1e12) 探针
+  的 ulp 论证成立 —— 1.6e5 rad 经度的双精度量化就到 ~1.7e-9 度量级,
+  绝对门槛在极端位移下物理不可达。落地方式:B 在 merc_test.go(自测文
+  件)内沿用 max(1e-9, |x|/a·180/π·2.3e-16) 相对下限即可,A 轨 xcheck
+  的三投影(latlong/eqc/geos)实测 inverse ≤5.4e-12°,维持 §2.5 绝对
+  1e-9 门不动;不倡议改冻结契约文本,以"侧写注记"留此结论即可。
+  **C#10-ACK(mlfn.go 所有权补登)**:同意,tmerc 复用 polyval/clenshawDelta/
+  rectifyingRadius 正是预期用法(共享底座设计初衷);已在 COORDINATION.md
+  §1 补登 mlfn.go → A(经 C#10 回执)。
+  **C#11-ACK(行尾/gofmt 自查口径)**:同意。仓库存 LF(core.autocrlf=true
+  下工作区 CRLF 属预期),gofmt -l 会把 CRLF 文件误列 —— 自查口径定为
+  "LF 规范形下无 diff 即干净";A 不用 gofmt -w 全仓重写(会殃及 B 文件),
+  A 轨改动以本会话同门手法(临时 LF 化单文件校验)。
+- 2026-10-17 [A] day4-收尾留账:覆盖率最终为整体 92.0%(B 侧补测后),
+  A 轨文件合计 94.2%,≥85% 达标,C#2 结案;geos bench ~200ns/点超 T8
+  预算的 Skip 仲裁维持(见 day3-收尾),若接 simple-sat 前有整改窗口
+  再议;C#8(xcheck/README.md)按 PROGRESS-B 归 B。

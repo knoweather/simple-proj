@@ -22,6 +22,7 @@
 | `proj.go`(Projection 接口 + register + batch 批量)| A | 只读 |
 | `projstr.go`(CRS.String 往返)| A | 只读 |
 | `impl_latlong.go`、`impl_eqc.go`、`impl_geos.go` + 各自 `_test.go` | A | 只读 |
+| `mlfn.go`(矩面子午线弧通用件:polyval/clenshawDelta/rectifyingRadius/mlfn 系)| A(C#10 补登)| 只读(B 复用助手,B 自己的投影不落新系数表) |
 | `xcheck/xcheck_test.go`(消费 golden)| A | 只读 |
 | `bench.go` | A | 只读 |
 | `xcheck/gen_golden.py` + `xcheck/golden_*.json` | **B**(生成器与 fixture)| A 只读消费 |
