@@ -115,20 +115,113 @@ PROJ 9.8.1 `src/projections/laea.cpp`(mode 枚举 `S_POLE / N_POLE / EQUIT / OBL
   → 见 PROGRESS-B.md **C#7**。
 
 
-## 3. lcc(待写)
+## 3. lcc(已实现,对拍通过)
 
-出处:Snyder PP 1395 ch. 14(Conic projections,Lambert conformal conic);PROJ `src/projections/lcc.cpp`。
-`m` / `n` 由 `lat_1`,`lat_2`(或 `lat_ts`)推出;`lat_1 = lat_2` 或 `lat_ts` 时退化为单标准纬。
+**出处**:Snyder PP 1395 ch. 14;PROJ 9.8.1 `src/projections/lcc.cpp`(本轨拉了源码逐字核对)。
 
-## 4. merc(待写)
+推导(不背 Snyder 公式,从共形条件直推):把映射写成极坐标形式 (ρ(φ), n(λ−λ0)),
+共形条件 ⟺ dρ/dφ = −n·ρ·M/(N·cosφ),而 M/(N cosφ) 的不定积分正是等角纬 ψ
+(geolib.IsometricLat),故:
 
-出处:Snyder PP 1395 ch. 7(Mercator);PROJ `src/projections/merc.cpp`。
-`y = a·(1 - e²)... ` 形式即 `a·(gd⁻¹(φ) + (e/2)ln((1-e sinφ)/(1+e sinφ)))` —— 正好是 geolib 的 `IsometricLat`,
-所以 merc 的 kernel 直接复用 geolib,不另写公式。
+```
+m(φ) = cosφ / √(1 − e² sin²φ)          (pj_msfn)
+t(φ) = e^(−ψ(φ))                       (pj_tsfn = geolib.ExpNegIsometric)
+n   = ln(m1/m2) / ln(t1/t2)             (secant; 切锥 |lat1−lat2|<EPS10 → n = sin φ1)
+C   = a·k0·m1·e^(n·ψ1) / n
+ρ(φ) = C·e^(−n·ψ(φ)),  ρ0 = ρ(φ0)
+x = ρ·sin(n·Δλ),  y = ρ0 − ρ·cos(n·Δλ)   (Δλ = adjlon(λ−λ0))
+inverse: ρ = hypot(x, ρ0−y)  (n<0 时三者先取反), ψ = ln(C/ρ)/n, φ = LatFromIsometric(ψ), λ = atan2(x, ρ0−y)/n
+```
 
-## 5. tmerc(待写)
+- **注意 pj_tsfn = e^(−ψ)**,不是 e^(+ψ);符号搞反 n 和 ρ0 会翻符号。
+- **南锥(n<0)不是另一套公式**:n 的符号从 ln(m1/m2)/(ψ2−ψ1) 自然流出,ρ0 同号;
+  只有 inverse 要先取反 (x, y, ρ)——PROJ `lcc_e_inverse` 原样如此(否则 ρ/c < 0 取对数出 NaN)。
+- **PROJ 的极点规则**:φ·n > 0 的极点是锥尖 → (0, ρ0);另一极点是定义域外
+  (PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN)。pyproj 默认 errcheck=False,
+  对外显示 (inf, inf),别被误导——我们内核返 NaN,适配层转 ErrDomain。
+- **守卫与 PROJ 逐字一致**:`|lat_1 + lat_2| < EPS10` 拒收(lat_1 = −lat_2 → n=0)、
+  `|lat_1|,|lat_2| < 90°` 拒收;`+k_0` 缩放 ρ。
+- **坑:经度必须弧度制归约**。θ = n·Δλ 对 Δλ 不是 2π 周期(n≠1)。golden_lcc 第一个点
+  Δλ = −280°,必须归约成 +80° 才对得上——原来没归约,forward 差 5000 万米级。
+  geolib 新增 `geoAdjLonPi`((−π,π],PROJ 管线 adjlon 顺序)。
+- **与 §2.3 契约的偏差(记录在案)**:PROJ 9.8.1 对"只给 +lat_ts 的 lcc"直接拒收
+  (lat_1 默认 0 → |lat_1+lat_2| 守卫);按 §2.3 单纬线约定,适配层把 lat_ts 读成切锥
+  (lat1 = lat2 = lat_ts)。golden 不覆盖该路径。
+- PROJ 9.8.1 的 `lat_2` 缺失分支行为无法复现(既非 phi0=0 也非 phi0=lat_1,怀疑与
+  proj.ini/上下文默认有关),本实现统一 lat_2 缺省 = lat_1、phi0 缺省 = 0,并记录于此。
 
-出处:Snyder PP 1395 ch. 7(Transverse Mercator,级数解);PROJ 9 用 Krüger 级数(`src/projections/tmerc.cpp`,
-`Tmerc` 结构里的 `c`/`d` 系数表)。气象尺度先做 6 阶(误差 <1 mm @ <1000 km,DESIGN §6.3);
-若要与 PROJ 逐位对拍,需要 Krüger 10 阶或 Karney 2023 的 `TransverseMercator`。
-golden 的 tmerc case 会决定截断阶数 —— 先按 6 阶跑,超差再升阶。
+**对拍结论**(golden_lcc.json,1099 fwd + 1090 inv):forward 最大 4.84e-5 m(坐标 ~9e7 m,
+相对 5.4e-13,C#3 相对容差内),inverse 最大 2.56e-13 deg。切锥/南锥/球面退化用 pyproj
+参考点单独校过(lcc_test.go: TestLccTangentAndSouthern / TestLccSphere)。
+
+## 4. merc(已实现,对拍通过)
+
+**出处**:Snyder PP 1395 ch. 7;PROJ 9.8.1 `src/projections/merc.cpp`。
+
+```
+factor = |lat_ts|>0 ? msfn(lat_ts) : 1        (msfn = cosφs/√(1−e² sin²φs);球面 = cosφs)
+x = a·factor·Δλ,   y = a·factor·ψ(φ)
+ψ = asinh(tan φ) − e·atanh(e·sin φ)            (PROJ 稳定形式;e=0 → asinh(tan φ))
+inverse: ψ = y/(a·factor), φ = LatFromIsometric(ψ);  λ = x/(a·factor) + λ0
+```
+
+**比例因子口径(day0 笔记写反了,本轨用 pyproj 重探,以此为准)**:
+
+- `+lat_ts` 一旦给出(**值是多少都行,含 0**):factor = **msfn(φs)**,且 **`+k_0` 被彻底忽略**
+  (PROJ 是*替换* k0,不是相乘——pyproj 实测 k0=1/2/3 输出逐位相同)。
+- `+lat_ts` 缺省:factor = `+k_0`。
+- `|lat_ts| = 90` 拒收(msfn 退化为 0);`|lat| > 90` 我方输入约定报错;`|lat| = 90` 是域内点,
+  y 有限(见下)。
+
+**正解必须用 asinh 形式**:`asinh(tanφ) − e·atanh(e·sinφ)` 与
+`ln tan(π/4+φ/2) + (e/2)·ln((1−e sinφ)/(1+e sinφ))` 数学等价,但 φ = π/2(双精度)时
+前者给 38.0250、后者给 37.3319。golden_merc 的极点记录 `(0, 90) → y = 242528680.94374272`
+(= 38.025003373828866·a)锁的是前者。geolib.IsometricLat 保留 ln-tan 形式(laea/stere 的
+golden 已按它绿),merc 内核因此自带 `mercIsometricLat`,不污染共享库。
+
+**极点/极端值**:lat=±90 → y = ±38.0250·a(有限,与 pyproj 一致);(1e12,1e12) inverse →
+λ 的弧度值 ~1.6e5,ulp ~1.7e-9 deg——inverse 容差需要相对下限(见 C#9)。
+
+**对拍结论**(golden_merc.json,1099 fwd + 1090 inv):forward 最大 5.96e-8 m, inverse 最大
+1.98e-9 deg(C#9 相对容差内含 1e12 极端探针)。椭球 lat_ts 各值、k0 忽略、x_0/y_0 移位、
+EPSG:3857 别名均用 pyproj 参考点单独校过(merc_test.go)。
+
+## 5. tmerc(已实现,对拍通过)
+
+**出处**:PROJ 9.8.1 `src/projections/tmerc.cpp`(Poder/Engsager "exact"/etmerc 路径)+
+`src/latitudes.cpp`(辅助纬度级数,Maxima 表);数学根源 Koenig & Weise / Engsager-Poder
+(ICC2007)。**不是** Karney 2023 的椭圆函数精确版,也**不是** DESIGN §6.3 预设的自研
+Krüger 6 阶——PROJ 9 的默认 tmerc(auto)在 |Δλ|>3° 时就走这套 6 阶精确序列,直接对齐它。
+
+结构(归一化坐标里的 Gauss-Schreiber 复合):
+
+```
+正: φ --(cbg)--> 高斯纬 χ --> 复球面 (atan2/asinh) --> clenS(gtu) --> 归一化 (Cn, Ce)
+    x = Qn·Ce,  y = Qn·Cn + Zb
+反: Cn = (y−Zb)/Qn, Ce = x/Qn; clenS(utg); Ce = atan2(sinhCe, cosCn);
+    Cn = atan2(sinCn, hypot(sinhCe, cosCn)); φ = auxlat(cgb, Cn, sinCn/rr, mod/rr); λ = Ce
+Qn = k0·a·pj_rectifying_radius(n)   (n = (a−b)/(a+b) 第三扁率)
+Zb = −Qn·auxlat(gtu, auxlat(cbg, φ0))
+域: |Ce| ≤ 2.623395162778 rad(~150°),双向
+```
+
+- auto 调度(|Δλ|>3° 精确 / 否则 Evenden-Snyder)在 fixture 上**不触发**:网格步长 11.25°,
+  所有点 |Δλ| ≥ 5°;两路在 3° 边界一致到 ~1e-9 m,故椭球路径恒定走精确序列。
+- **系数块标签是 `C[输出, 输入]`**(latitudes.cpp 的注释排版):`cgb`(GEO→GAUSS,φ→χ)用
+  标着 `C[chi,phi]` 的块(coeffs[87:108]),`cgb`(GEO→GAUSS)与 `cbg`(GAUSS→GEO)、`utg` 与 `gtu` 两对容易装反。
+  装反的判据:φ→χ 首项应为 **−2n**(45° 的共形纬 ≈ 44.8°,小于大地纬),不是 +2n。
+- 四周转换全走"n 的奇次幂"分支(F[l] = n^l·polyval(n, block, 5−l));
+  `pj_auxlat_coeffs` 的 `ptrs[]` 索引是 `6·auxout + auxin`。
+- **inverse 别丢实部**:PROJ 写 `Cn += clenS(utg, …)`——clenS 的**返回值**(实部)要加进
+  Cn,指针参数拿的是虚部 dCe。只加 dCe 的话往返 lat 偏 0.05°。
+- 球面(a==b)PROJ 强制走 `tmerc_spherical_*`(exp 型 x = k0·atanh(cosφ sinΔλ)、acos 型 y),
+  且框架统一乘 `P->a`——我们内核自产米制,球面分支要显式 ×a、inverse 要 /a。
+- 经度同样要 `geoAdjLonPi`;inverse 返回的是相对 λ0 的 Δλ,适配层 `adjlon(λ+λ0)` 后
+  再转度(顺序反了会在 1e12 m 级坐标上丢 1e-9 deg 以上的精度)。
+- **fixture 的 `+k=` 别名**:A 的 Parse 把 k/k0 归一到 `k_0`,但 B 测试侧的
+  `goldenParams` 没有别名表,golden_tmerc 读的是 `p["k"]=0.9996`——测试自己回退。
+
+**对拍结论**(golden_tmerc.json,1091 fwd + 1081 inv + 9 specials):forward 最大 **7.45e-9 m**,
+inverse 最大 **3.13e-13 deg**;specials(Δλ 82.5°~97.5° 的前向 + (9e9,−9e9) 反向)全部
+按 |Ce| 域界正确 NaN。球面分支、k0/x_0/y_0/lat_0≠0 变体用 pyproj 参考点单独校过
+(tmerc_test.go: TestTmercSphere / TestTmercVariants)。

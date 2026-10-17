@@ -27,6 +27,23 @@ func geoNormLon(lon float64) float64 {
 	return m - 180
 }
 
+// geoAdjLonPi reduces a radian longitude difference to (-pi, pi]. PROJ's pipeline
+// does the same before every projection (pj_fwd: adjlon(lp.lam - P->lam0)), and
+// the golden fixtures are generated behind that normalization. It matters for
+// every kernel whose map is NOT 2*pi-periodic in lon - lon0 — the Lambert conic
+// with its theta = n*(lon-lon0) being the case in point (n != 1). Periodic
+// kernels (laea, stere, geos) do not need it.
+func geoAdjLonPi(lam float64) float64 {
+	if lam > math.Pi || lam <= -math.Pi {
+		lam = math.Mod(lam+math.Pi, 2*math.Pi)
+		if lam < 0 {
+			lam += 2 * math.Pi
+		}
+		lam -= math.Pi
+	}
+	return lam
+}
+
 // Gudermannian: gd(x) = arcsin(tanh x) = 2 atan(tanh(x/2)).
 func Gudermannian(x float64) float64 {
 	return 2 * math.Atan(math.Tanh(x/2))
