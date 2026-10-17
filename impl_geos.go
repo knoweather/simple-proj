@@ -57,7 +57,7 @@ func newGeos(c *CRS) (Projection, error) {
 		rg:   1 + rg1,
 		lon0: lon0,
 	}
-	p.cC = p.rg * p.rg - 1
+	p.cC = p.rg*p.rg - 1
 	el := c.Ellipsoid
 	if !el.Sphere {
 		p.ell = true

@@ -28,14 +28,14 @@ const (
 // eqcProj eqc 投影实例(不可变,线程安全)。
 type eqcProj struct {
 	crs    *CRS
-	a      float64 // 长半轴(米)
-	rc     float64 // x = rc·λ(λ rad):椭球 a·nu1·cosφ_ts;球 a·cosφ_ts
-	m0     float64 // lat_0 处 a-归一子午线弧 mlfn(φ0)(椭球);球体为 0
-	en0    float64 // 矩形半径(a-归一;球体 0)
+	a      float64              // 长半轴(米)
+	rc     float64              // x = rc·λ(λ rad):椭球 a·nu1·cosφ_ts;球 a·cosφ_ts
+	m0     float64              // lat_0 处 a-归一子午线弧 mlfn(φ0)(椭球);球体为 0
+	en0    float64              // 矩形半径(a-归一;球体 0)
 	F      [auxLatOrder]float64 // φ→μ 系数
 	Finv   [auxLatOrder]float64 // μ→φ 系数
-	phi0   float64 // lat_0(rad)(球体 y 用)
-	lon0   float64 // lon_0(度)
+	phi0   float64              // lat_0(rad)(球体 y 用)
+	lon0   float64              // lon_0(度)
 	sphere bool
 }
 

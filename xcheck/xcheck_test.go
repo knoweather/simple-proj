@@ -74,11 +74,11 @@ type entry struct {
 }
 
 type special struct {
-	Desc      string `json:"desc"`
-	Lon       *nanF  `json:"lon"` // {lon,lat} 形态 → 正向域外探针
-	Lat       *nanF  `json:"lat"`
-	X         *nanF  `json:"x"` // {x,y} 形态 → 逆向域外探针
-	Y         *nanF  `json:"y"`
+	Desc      string   `json:"desc"`
+	Lon       *nanF    `json:"lon"` // {lon,lat} 形态 → 正向域外探针
+	Lat       *nanF    `json:"lat"`
+	X         *nanF    `json:"x"` // {x,y} 形态 → 逆向域外探针
+	Y         *nanF    `json:"y"`
 	ExpectNaN boolLike `json:"expectNaN"`
 }
 

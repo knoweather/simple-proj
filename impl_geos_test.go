@@ -142,11 +142,11 @@ func TestGeosEllipsoidDomain(t *testing.T) {
 // 错误面:h 缺省/非法、sweep 非法、输入域错误
 func TestGeosErrors(t *testing.T) {
 	for _, crs := range []string{
-		"+proj=geos +a=6378137 +b=6378137",             // h 缺省 0 → rg1≤0,PROJ 亦报错(probe9)
-		"+proj=geos +h=0 +a=6378137 +b=6378137",         // h=0
-		"+proj=geos +h=-1e10 +a=6378137 +b=6378137",     // 负
-		"+proj=geos +sweep=q +h=35785863 +a=6378137",    // sweep 非法
-		"+proj=geos +sweep=yy +h=35785863 +a=6378137",   // sweep 多字符
+		"+proj=geos +a=6378137 +b=6378137",            // h 缺省 0 → rg1≤0,PROJ 亦报错(probe9)
+		"+proj=geos +h=0 +a=6378137 +b=6378137",       // h=0
+		"+proj=geos +h=-1e10 +a=6378137 +b=6378137",   // 负
+		"+proj=geos +sweep=q +h=35785863 +a=6378137",  // sweep 非法
+		"+proj=geos +sweep=yy +h=35785863 +a=6378137", // sweep 多字符
 	} {
 		c, err := Parse(crs)
 		if err == nil {

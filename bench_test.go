@@ -86,12 +86,24 @@ func benchInverseBatch(b *testing.B, crs, disc string) {
 	}
 }
 
-func BenchmarkForwardBatchLatlong(b *testing.B) { benchForwardBatch(b, "+proj=latlong +ellps=WGS84", "") }
-func BenchmarkForwardBatchEqc(b *testing.B)     { benchForwardBatch(b, "+proj=eqc +lat_ts=0 +lon_0=180 +ellps=WGS84", "") }
-func BenchmarkForwardBatchGeos(b *testing.B)    { benchForwardBatch(b, "+proj=geos +h=35785863 +ellps=WGS84 +sweep=y", "disc") }
-func BenchmarkInverseBatchLatlong(b *testing.B) { benchInverseBatch(b, "+proj=latlong +ellps=WGS84", "") }
-func BenchmarkInverseBatchEqc(b *testing.B)     { benchInverseBatch(b, "+proj=eqc +lat_ts=0 +lon_0=180 +ellps=WGS84", "") }
-func BenchmarkInverseBatchGeos(b *testing.B)    { benchInverseBatch(b, "+proj=geos +h=35785863 +ellps=WGS84 +sweep=y", "disc") }
+func BenchmarkForwardBatchLatlong(b *testing.B) {
+	benchForwardBatch(b, "+proj=latlong +ellps=WGS84", "")
+}
+func BenchmarkForwardBatchEqc(b *testing.B) {
+	benchForwardBatch(b, "+proj=eqc +lat_ts=0 +lon_0=180 +ellps=WGS84", "")
+}
+func BenchmarkForwardBatchGeos(b *testing.B) {
+	benchForwardBatch(b, "+proj=geos +h=35785863 +ellps=WGS84 +sweep=y", "disc")
+}
+func BenchmarkInverseBatchLatlong(b *testing.B) {
+	benchInverseBatch(b, "+proj=latlong +ellps=WGS84", "")
+}
+func BenchmarkInverseBatchEqc(b *testing.B) {
+	benchInverseBatch(b, "+proj=eqc +lat_ts=0 +lon_0=180 +ellps=WGS84", "")
+}
+func BenchmarkInverseBatchGeos(b *testing.B) {
+	benchInverseBatch(b, "+proj=geos +h=35785863 +ellps=WGS84 +sweep=y", "disc")
+}
 
 // TestBatchPerf1e6 设计预算(DESIGN T8:1e6 < 100 ms)仲裁检查。
 // 不作硬性 CI 断言(共享 VM 载荷不可控);测量最快一批并在放大 2 倍余量内
