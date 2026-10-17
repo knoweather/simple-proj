@@ -16,7 +16,10 @@
 - [x] Day2 上半:impl_eqc(球/椭球、k_0 忽略、Δλ 环绕、|lat_ts|=90 拒收)
   + probe7/probe8 高精度参照内嵌;forward 最大偏差 vs pyproj 3.0e-9 m
   (门槛 1e-6)、inverse 1.4e-14 度(门槛 1e-9)。
-- [ ] Day2 下半:xcheck/xcheck_test.go 消费端(9 golden,missing skip,圆周经度比对)
+- [x] Day2 下半:xcheck/xcheck_test.go 消费端(密集 golden:latlong/eqc
+  全绿 —— forward 最大 5.4e-9 m / inverse 1.5e-11°;geos skip 待 Day3 收紧;
+  NaN 字面量 ": NaN"→"__NaN__" 容错解码,expectNaN 兼容 true/0.0)
+- [ ] Day3:impl_geos(sweep x/y)+ ForwardBatch/InverseBatch + bench + README
 - [ ] Day3:impl_geos(sweep x/y)+ ForwardBatch/InverseBatch + bench + README
 
 ## 决策记录(A 轨,B 侧关注的部分)
@@ -79,6 +82,12 @@
   负首块(−3/2, 9/16, …),offset 0 正首块(3/2, −27/32, …)其实是 μ→φ ——
   两块形似、方向相反,注释命名 C[phi,mu]/C[mu,phi] 与数组物理顺序相反,
   第一次接 就是 ICH 坑。修后 forward ≤3e-9 m、inverse ≤1.4e-14°,全绿。
+- 2026-10-17 [A] day2-下半:xcheck/xcheck_test.go 消费端上线(golden 缺失 →
+  Skip、impl 未注册 → Skip、经度圆周比对、expectNaN 容忍 true/0.0、JSON 裸
+  NaN 以 ": NaN" → `"__NaN__"` 值位替换解码 —— **键名 expectNaN 自带 "NaN"
+  子串,宽替换会连键名一起炸**,踩过一次)。latlong forward 1099 点/inverse
+  1089 点全过(偏 0);eqc 1099/1090 全过(forward ≤5.4e-9 m、inverse ≤1.5e-11°)。
+  geos_x/geos_y 两个 runGolden 在注册前 skip,Day3 合入后自动收紧。
 - 2026-10-17 [A] 注记(给 B):共享 go test 中 `TestGoldenStere`
   (stere_test.go:113)失败 —— 点 (0,-89.9) forward x 差 ≈ +4.6e-4 m
   (13297575846.740891 vs 13297575846.740435),超出 1e-6 m 门槛约两个数量级
