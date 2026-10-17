@@ -1,0 +1,50 @@
+# PROGRESS-A.md — AI-A 轨进度(地基 + P0 投影)
+
+> 本文件 owner=AI-A,B 只读。跨轨事项编号 C#x 在本文件独立递增(COORDINATION §5)。
+> 参照:COORDINATION.md §3 日程;本文件是 A 轨唯一记账。
+> 环境:go1.27.1(`C:\Users\64517\go\go1.27.1\bin`,系统 PATH 未含,构建需自带);
+> git 2.45.1;工作目录 D:\simple-proj。
+
+## 状态(COORDINATION §3 A 轨清单)
+
+- [x] Day0 上午:git init + main 空提交(cc7c5f5);建分支 `ai-a`/`ai-b`;A 停在 `ai-a`
+- [x] Day0 上午:契约首提交 —— §2 符号逐字落地(proj.go / crs.go / ellipsoid.go /
+  gribshape.go / projstr.go),函数体骨架;同提交 .gitignore / PROGRESS-A.md
+- [ ] Day0 下午:ellipsoid.go 全量实现 + 单测
+- [ ] Day0 下午:gribshape.go(GRIB shape 1-11 → 椭球,平移 simple-grib 逻辑)+ 单测
+- [ ] Day1:crs.go Parse 全量 + projstr.go 往返 + impl_latlong
+- [ ] Day2:impl_eqc + xcheck/xcheck_test.go 消费端
+- [ ] Day3:impl_geos(sweep x/y)+ ForwardBatch/InverseBatch + bench + README
+
+## 决策记录(A 轨,B 侧关注的部分)
+
+- D1 非数值参数存储:冻结契约只开放 Params[float64] / UnknownParams[string] 两口。
+  Parse 把识别到的非数值参数(sweep、datum、towgs84、no_defs 等旗标)连同真正的
+  未知参数统一存 UnknownParams;适配层经 proj.go 未导出助手
+  `paramString(crs,"sweep","y")` / `paramFloat(...)` 取用。B 的 impl_*.go 直接用即可
+  (sweep 缺省 "y",PROJ ≥6 语义);若认为需要契约化(如专职字段),走 §5 提 C#x。
+- D2 批量错误语义(DESIGN §1.1 重采样场景):单点 ErrDomain → 该点写 (NaN,NaN)
+  继续;其他错误(非法输入等)立即整批失败并返回;批内出现任一 ErrDomain → 批末
+  err 为 ErrDomain(errors.Is 可判,有效点结果仍可用)。
+- D3 椭球组合优先级:+R > +ellps > +a/b 组合 > 默认 WGS84;仅给 +a 视作正球体;
+  +rf=0 同义正球体(PROJ 语义)。
+- D4 Parse 已知 proj 名(冻结 v1):latlong(含 longlat 别名 → 常规化 latlong)、
+  eqc、geos、stere、laea、lcc、merc、tmerc;未知 +proj 报错(DESIGN §1.1 校验)。
+  B 未移交的投影在 NewProjection 阶段报 "尚未注册"。
+- D5 [在写] gen_golden 缺位期间,xcheck 消费端对缺失的 golden_*.json errno-跳过,
+  不阻塞 A 侧 go test 绿;golden 到位后自动收紧为真实断言(B 侧生成即可,无协作锁)。
+
+## 协作事项(§5 流程)
+
+- C#1 **GRIBEllipsoid 签名装不下双轴形状**(冻结签名 `GRIBEllipsoid(shape int,
+  scale uint8, raw uint32)` 只有一组 (scale,raw)):shape 3(major/minor km 双轴)
+  与 shape 7(m 双轴)需要两组编码维度,且 minor 维度取自 octets 26-30
+  (simple-grib grid/definition.go 同表)。当前对 3/7 返回明确错误;提议新增
+  `GRIBEllipsoidAxes(shape int, majorScale uint8, majorRaw uint32, minorScale uint8, minorRaw uint32) (Ellipsoid, error)`
+  (owner=A 落地;原 GRIBEllipsoid 保留处理单维/固定形状;B 无须改动)。
+  **请 B 在 PROGRESS-B.md 回执 C#1-ACK 或异议。**
+
+## 日志
+
+- 2026-10-17 [A] day0-上午:git init、main 空提交 cc7c5f5、ai-a/ai-b 分支、
+  契约骨架首提交(§2 逐字)、.gitignore、本档建档。
