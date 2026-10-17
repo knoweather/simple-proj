@@ -167,3 +167,9 @@
   A 轨文件合计 94.2%,≥85% 达标,C#2 结案;geos bench ~200ns/点超 T8
   预算的 Skip 仲裁维持(见 day3-收尾),若接 simple-sat 前有整改窗口
   再议;C#8(xcheck/README.md)按 PROGRESS-B 归 B。
+- 2026-10-17 [A] day4-合流落锤:main fast-forward 至 50f53db(含 B 五投影
+  与本次 GRIBEllipsoidAxes);合并后全量复验 go build/go vet/go test 全绿,
+  覆盖率 92.1%(≥85% 门)、无 CGO、禁第三方依赖自洽。打 tag
+  v0.1.0-projsubset。本库自此可对外:P9/投影×9、Parse/String 往返、
+  批量 D2 语义、GRIB shape 0-11 + 双轴 3/7 全落地。后继 simple-sat
+  按 DESIGN §5/README「公共 API 契约」接入。
