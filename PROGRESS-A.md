@@ -13,7 +13,10 @@
 - [x] Day0 下午:ellipsoid.go 全量实现 + 单测(3d10229)
 - [x] Day0 下午:gribshape.go(GRIB shape 1-11 → 椭球,平移 simple-grib 逻辑)+ 单测(3d10229)
 - [x] Day1:crs.go Parse 全量 + projstr.go 往返 + impl_latlong(+ mlfn.go Karney 矩形纬)
-- [ ] Day2:impl_eqc + xcheck/xcheck_test.go 消费端
+- [x] Day2 上半:impl_eqc(球/椭球、k_0 忽略、Δλ 环绕、|lat_ts|=90 拒收)
+  + probe7/probe8 高精度参照内嵌;forward 最大偏差 vs pyproj 3.0e-9 m
+  (门槛 1e-6)、inverse 1.4e-14 度(门槛 1e-9)。
+- [ ] Day2 下半:xcheck/xcheck_test.go 消费端(9 golden,missing skip,圆周经度比对)
 - [ ] Day3:impl_geos(sweep x/y)+ ForwardBatch/InverseBatch + bench + README
 
 ## 决策记录(A 轨,B 侧关注的部分)
@@ -68,6 +71,14 @@
   容差 1e-9 太松,GRS80 与 WGS84 的 b 差 ~1.05e-4 m 被吞掉 → 4269 误判 4326,
   收紧至 1e-12(≈1.3e-5 m);(2) 弧度后缀测试误用无类型常量精确折叠当期望值,
   与实现的双舍入口径差 2e-14 度,改为与实现同序的运行期表达式。
+- 2026-10-17 [A] day2-上半:impl_eqc.go 全量 + impl_eqc_test.go(probe7/probe8
+  pyproj 3.8.0 实测值内嵌)。走过的弯路记两笔(mlfn 通用件,geos 复用前务必吃透):
+  (1) Karney auxlat 系数起始幂:d 从 n 起(PROJ pj_auxlat_coeffs `double d = n`),
+  我最初写 d=1 导致 F 表放大;(2) 系数块归属:PROJ coeffs 数组里 ptrs 的
+  (auxout,auxin) 行主序,φ→μ(R.GEOGRAPHIC→RECTIFYING)取 offset 54 的
+  负首块(−3/2, 9/16, …),offset 0 正首块(3/2, −27/32, …)其实是 μ→φ ——
+  两块形似、方向相反,注释命名 C[phi,mu]/C[mu,phi] 与数组物理顺序相反,
+  第一次接 就是 ICH 坑。修后 forward ≤3e-9 m、inverse ≤1.4e-14°,全绿。
 - 2026-10-17 [A] 注记(给 B):共享 go test 中 `TestGoldenStere`
   (stere_test.go:113)失败 —— 点 (0,-89.9) forward x 差 ≈ +4.6e-4 m
   (13297575846.740891 vs 13297575846.740435),超出 1e-6 m 门槛约两个数量级

@@ -15,18 +15,9 @@ import "math"
 // auxLatOrder Karney 系列阶(同 PROJ latitudes.cpp / mlfn.cpp)。
 const auxLatOrder = 6
 
-// mlPhiToMu C[phi,mu] 系数表(共 12 项,偶幂打包;分组见 mlCoeffs)。
+// mlPhiToMu C[φ→μ](PROJ coeffs offset 54 块,首项负:μ < φ)系数表
+// (12 项,偶幂打包;分组见 mlCoeffs)。
 var mlPhiToMu = [...]float64{
-	3.0 / 2, -27.0 / 32, 269.0 / 512,
-	21.0 / 16, -55.0 / 32, 6759.0 / 4096,
-	151.0 / 96, -417.0 / 128,
-	1097.0 / 512, -15543.0 / 2560,
-	8011.0 / 2560,
-	293393.0 / 61440,
-}
-
-// mlMuToPhi C[mu,phi] 系数表(同打包语义,供 μ→φ 逆转换)。
-var mlMuToPhi = [...]float64{
 	-3.0 / 2, 9.0 / 16, -3.0 / 32,
 	15.0 / 16, -15.0 / 32, 135.0 / 2048,
 	-35.0 / 48, 105.0 / 256,
@@ -35,11 +26,21 @@ var mlMuToPhi = [...]float64{
 	1001.0 / 2048,
 }
 
+// mlMuToPhi C[μ→φ](PROJ coeffs offset 0 块,首项正)系数表(同打包语义)。
+var mlMuToPhi = [...]float64{
+	3.0 / 2, -27.0 / 32, 269.0 / 512,
+	21.0 / 16, -55.0 / 32, 6759.0 / 4096,
+	151.0 / 96, -417.0 / 128,
+	1097.0 / 512, -15543.0 / 2560,
+	8011.0 / 2560,
+	293393.0 / 61440,
+}
+
 // mlCoeffs 预计算 φ→μ 的 Fourier 系数:F[l] 乘 sin(2(l+1)·φ),
 // 各 F[l] 是 n 与 n² 的重 Pack 多项式(可见 PROJ latitudes.cpp 分组)。
 func mlCoeffs(n float64) (F [auxLatOrder]float64) {
 	n2 := n * n
-	d := 1.0
+	d := n // PROJ 口径:F[l] 起始幂 n^(l+1)(Jones/Karney 打包)
 	o := 0
 	for l := 0; l < auxLatOrder; l++ {
 		m := (auxLatOrder - l - 1) / 2
@@ -53,7 +54,7 @@ func mlCoeffs(n float64) (F [auxLatOrder]float64) {
 // mlInvCoeffs 预计算 μ→φ 的 Fourier 系数(同位模式)。
 func mlInvCoeffs(n float64) (F [auxLatOrder]float64) {
 	n2 := n * n
-	d := 1.0
+	d := n // 同 mlCoeffs:起始幂 n^(l+1)
 	o := 0
 	for l := 0; l < auxLatOrder; l++ {
 		m := (auxLatOrder - l - 1) / 2
