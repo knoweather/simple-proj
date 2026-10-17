@@ -167,6 +167,19 @@
   A 轨文件合计 94.2%,≥85% 达标,C#2 结案;geos bench ~200ns/点超 T8
   预算的 Skip 仲裁维持(见 day3-收尾),若接 simple-sat 前有整改窗口
   再议;C#8(xcheck/README.md)按 PROGRESS-B 归 B。
+- 2026-10-17 [A] **Linux CI 门补跑完成(pve77 CT,user 指定机器)**:
+  CT 无外网 —— go1.27.1 linux-amd64 由 Windows 侧下载 tarball scp 安装
+  (/usr/local/go-dist);-race 依赖的 gcc 14.2 以 trixie Packages 索引
+  解析依赖闭包离线 dpkg 安装(debfetch.py,43 包)。门结果:
+  `go test -race -count=1 ./...` 全绿(主包 5.1s/xcheck 1.1s,零竞争报警)
+  —— **-race 缺口就此结案**;coverage 92.1% 复现;gofmt -l 全仓 0 文件
+  (LF 规范下干净);go vet 0 警告;Windows→Linux 交叉编译 6 组全过
+  (windows/amd64+arm64、darwin/amd64+arm64、freebsd/amd64+arm64,CGO=0)。
+  + Day4 此前一组 4 组交叉在 Windows 侧过,合计 10 组。
+  基础设施:git bare /root/src/simple-proj.git + 工作副本,本地 remote
+  名 `pve77` 可直接 git push;gcc/Go 入 PATH 已写 /etc/profile.d/go-dist.sh
+  (自动化脚本调用仍建议显式 export PATH)。race/coverage 基线即 day4
+  合流点,PROGRESS 只记账不改代码。
 - 2026-10-17 [A] day4-合流落锤:main fast-forward 至 50f53db(含 B 五投影
   与本次 GRIBEllipsoidAxes);合并后全量复验 go build/go vet/go test 全绿,
   覆盖率 92.1%(≥85% 门)、无 CGO、禁第三方依赖自洽。打 tag
