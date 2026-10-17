@@ -167,6 +167,28 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
   schema(specials 两种探针形态 + expectNaN 语义)、生成器用法(网格/附加点/域探针/
   源 CRS 过滤/健全性校验)、消费侧容差口径(§2.5 + C#3/C#5/C#9)、再生策略(改 fixture
   须双方记账)、已知坑(expectNaN 键名宽替换炸解析等)。C#8 结案。
+- 2026-10-17 [B·续] **全篇测试(用户指示)**:新增扩展对拍体系与 B 轨 bench——
+  - `xcheck/gen_sweep.py` + `xcheck/sweep_extra.json` + `sweep_extra_test.go`:
+    独立于 golden 网格的第二套点集(结构化边角 + 固定种子 LCG,9 例共 320 fwd /
+    320 inv / 8 specials),走完整公共 API 对拍 pyproj,防"恰好拟合 fixture"。
+    结果:forward 最大 eqc 7.5e-9 m / tmerc 3.7e-9 m / stere 2.1e-5 m(相对,C#3)/
+    lcc 4.7e-6 m(相对),inverse 全部 ≤ 2.8e-12 deg。
+  - `TestThreadSafety`:8 goroutine 并发同一 Projection,与串行逐位一致(内核不可变,
+    竞争由设计排除;-race 待 linux CI)。
+  - `bench_b_test.go`:B 轨五投影 Forward/InverseBatch 1e6 点基准
+    (fwd 96-239 ms;inv merc 77 ms → stere 692 ms,stere/laea/lcc 的 inverse 是
+    不动点/Newton 迭代的真实成本,PROJ 同款)。A 轨 bench 复跑数值同量级。
+  - **C#13(新,外围点往返门)**:sweep 抓到 tmerc 在 Δλ=−70° 的 F→I 往返漂
+    1.36e-8 deg——**pyproj 自己也是 1.36e-8**(PROJ etmerc 域边固有),我们与其
+    一致到 2e-14 deg。故 sweep 的往返门改为"与 pyproj 自身往返一致"
+    (参考文件记 rt_lon/rt_lat),良态点自动退化为 §2.5 绝对 1e-9 deg 门。
+    建议 §2.5 侧写:往返门适用于良态点,外围点以 pyproj 往返为参照。
+  - 末态门:vet 0 / 测试全绿 / 覆盖率 92.2% / gofmt(LF 规范形)干净。
+- 2026-10-17 [B·续] **README.md 扩写(应用户要求;§1 属 A 的文件,请 A review)**:
+  在**完整保留 A 原文**(快速上手/能力边界/精度与对拍/公共 API 契约/simple-grib
+  桥接/协作/许可)的基础上,补:项目背景(为什么做/为什么不用 pyproj/双 AI 协作)、
+  特性总览表、参数语义与域规则表、9 投影精度表(golden + sweep 双列)、批量性能表
+  (A+B 共 8 投影)、测试指南、项目结构与所有权表。
 
 ## HANDOVER(下个会话可直接接)
 
