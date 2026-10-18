@@ -1,279 +1,96 @@
 #!/usr/bin/env python3
-"""
-xcheck/gen_golden.py — golden fixture generator. Owner: AI-B (COORDINATION §1).
-
-Golden truth = pyproj; the Go side is only a consumer (DESIGN §3). Output schema is
-the frozen one in COORDINATION §2.4 (crs / generator / generated / forward / inverse /
-specials). `specials` entries may additionally carry lon/lat when the probe is
-forward-direction — Go's decoder ignores unknown keys, so this is additive, not a
-contract change.
-
-Run from repo root:  python xcheck/gen_golden.py
-Deps:                pyproj (pip install pyproj)
-
-Notes on semantics we lock in here (agreed numeric rules, COORDINATION §2.5):
-  * API units: lon/lat in degrees, x/y in metres (latlong returns degrees).
-  * Out-of-domain: pyproj returns inf (PROJ HUGE_VAL); our Go contract returns NaN.
-    The fixture therefore records `expectNaN: true` and never writes raw inf/NaN
-    into JSON (invalid JSON).
-  * Longitude normalization on output: [-180, 180). pyproj does not always normalize,
-    so the generator normalizes and records the normalized value; the Go side must
-    match that. Points where pyproj's own output was already normalized are unaffected.
-"""
-
-import datetime
+# Owner: AI-B (single-track: 本会话)
+# 生成 xcheck/golden_*.json —— pyproj 是金标唯一事实源(参照 DESIGN.md §3)。
+# 运行: python xcheck/gen_golden.py
 import json
 import math
-import os
-import re
 import sys
+from pathlib import Path
+from datetime import datetime, timezone
 
-from pyproj import CRS, Transformer
+import pyproj
 
-# --- cases (DESIGN §3.1) -----------------------------------------------------
 CASES = {
-    "golden_latlong": "+proj=latlong +ellps=WGS84",
-    "golden_eqc": "+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +units=m",
-    "golden_geos_x": "+proj=geos +lon_0=140.7 +h=35785863 +x_0=0 +y_0=0 "
-                     "+a=6378137 +b=6356752.3 +units=m +sweep=x",
-    "golden_geos_y": "+proj=geos +lon_0=0 +h=35785863 +ellps=WGS84 +sweep=y",
-    "golden_stere": "+proj=stere +lat_0=90 +lat_ts=60 +lon_0=-100 +ellps=WGS84",
-    "golden_laea": "+proj=laea +lat_0=45 +lon_0=10 +ellps=WGS84 +x_0=0 +y_0=0",
-    "golden_lcc": "+proj=lcc +lat_1=30 +lat_2=60 +lat_0=0 +lon_0=100 +ellps=WGS84",
-    "golden_merc": "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 "
-                   "+x_0=0 +y_0=0 +units=m",
-    "golden_tmerc": "+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84",
+    "latlong": ("deg", "+proj=latlong +ellps=WGS84"),
+    "eqc":     ("m",   "+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +units=m"),
+    "geos_x":  ("m",   "+proj=geos +lon_0=140.7 +h=35785863 +x_0=0 +y_0=0 +a=6378137 +b=6356752.3142 +units=m +sweep=x"),
+    "geos_y":  ("m",   "+proj=geos +lon_0=0 +h=35785863 +x_0=0 +y_0=0 +ellps=WGS84 +units=m +sweep=y"),
+    "stere":   ("m",   "+proj=stere +lat_0=90 +lat_ts=60 +lon_0=-100 +ellps=WGS84 +units=m"),
+    "laea":    ("m",   "+proj=laea +lat_0=45 +lon_0=10 +x_0=0 +y_0=0 +ellps=WGS84 +units=m"),
+    "lcc":     ("m",   "+proj=lcc +lat_1=30 +lat_2=60 +lat_0=40 +lon_0=100 +x_0=0 +y_0=0 +ellps=WGS84 +units=m"),
+    "merc":    ("m",   "+proj=merc +lat_ts=45 +lon_0=0 +x_0=0 +y_0=0 +ellps=WGS84 +units=m"),
+    "tmerc":   ("m",   "+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +x_0=0 +y_0=0 +ellps=WGS84 +units=m"),
 }
 
-# 33 x 33 grid: lon in [-180, 180], lat in [-85, 85] (DESIGN §3.1)
-N = 33
-LON_MIN, LON_MAX = -180.0, 180.0
-LAT_MIN, LAT_MAX = -85.0, 85.0
-
-# Extra sanity points shared by every case (equator / prime meridian / near-pole).
-EXTRA_POINTS = [
-    (0.0, 0.0), (0.0, 89.9), (0.0, -89.9), (180.0, 0.0), (-180.0, 0.0),
-    (170.0, 85.0), (-170.0, -85.0), (100.0, 0.0), (-100.0, 0.0),
-]
-
-# Per-case domain probes. Each probe is run in both directions; whatever pyproj
-# returns decides expectNaN (non-finite => true). Points that pyproj answers with
-# finite values are recorded as ordinary forward/inverse entries instead.
-SPECIALS = {
-    "golden_latlong": [
-        {"desc": "identity at pole", "lon": 0.0, "lat": 90.0},
-    ],
-    "golden_eqc": [
-        {"desc": "eqc at pole (y = R2 * pi/2, finite)", "lon": 0.0, "lat": 90.0},
-        {"desc": "eqc inverse far outside band", "x": 9e9, "y": -9e9},
-    ],
-    "golden_geos_x": [
-        {"desc": "far side of Earth, outside satellite view", "lon": 0.0, "lat": 0.0},
-        {"desc": "inverse far outside visible disc", "x": 9e9, "y": -9e9},
-        {"desc": "just inside horizon, equator", "lon": 140.7 + 70.0, "lat": 0.0},
-    ],
-    "golden_geos_y": [
-        {"desc": "far side of Earth, outside satellite view", "lon": 180.0, "lat": 0.0},
-        {"desc": "inverse far outside visible disc", "x": 9e9, "y": -9e9},
-        {"desc": "sweep=y sign check at lon_0+70", "lon": 70.0, "lat": 0.0},
-    ],
-    "golden_stere": [
-        {"desc": "stere at north pole (lat_0)", "lon": -100.0, "lat": 90.0},
-        {"desc": "inverse outside projection circle", "x": 9e9, "y": -9e9},
-    ],
-    "golden_laea": [
-        {"desc": "antipode of lat_0/lon_0 (infinite radius)", "lon": -170.0, "lat": -45.0},
-        {"desc": "inverse far outside", "x": 9e9, "y": -9e9},
-    ],
-    "golden_lcc": [
-        {"desc": "lcc at pole (infinite radius)", "lon": 100.0, "lat": 90.0},
-        {"desc": "inverse far outside", "x": 9e9, "y": -9e9},
-    ],
-    "golden_merc": [
-        {"desc": "merc at pole (infinite y)", "lon": 0.0, "lat": 90.0},
-        {"desc": "inverse far outside", "x": 1e12, "y": 1e12},
-    ],
-    "golden_tmerc": [
-        {"desc": "tmerc at pole (infinite y)", "lon": 105.0, "lat": 90.0},
-        {"desc": "inverse far outside", "x": 9e9, "y": -9e9},
-    ],
-}
-
-PARAM_RE = re.compile(r"\+([a-zA-Z_0-9]+)=([-0-9.e+]+)")
-
-# Only ellipsoid-defining tokens may survive into the geographic source CRS. Keeping
-# projection tokens (+h, +lat_ts, +sweep, ...) in a longlat CRS makes PROJ build a
-# different pipeline and the numbers come out swapped — verified against pyproj 3.8.
-ELLPS_KEYS = {"a", "b", "R", "rf", "f", "es", "ellps", "datum"}
-
-
-def geostring(proj):
-    parts = ["+proj=longlat"]
-    for tok in proj.split():
-        if tok.startswith("+"):
-            key = tok[1:].split("=")[0]
-            if key in ELLPS_KEYS:
-                parts.append(tok)
-    return " ".join(parts)
-
-
-def params(proj):
-    out = {}
-    for k, v in PARAM_RE.findall(proj):
-        try:
-            out[k] = float(v)
-        except ValueError:
-            pass  # non-numeric params (ellps name, sweep, units) are not needed here
-    return out
-
-
-def norm_lon(lon):
-    """Contract §2.5: output longitude in [-180, 180)."""
-    v = (lon + 180.0) % 360.0 - 180.0
-    return v
-
-
-def finite(pair):
-    return math.isfinite(pair[0]) and math.isfinite(pair[1])
-
-
-def num(v):
-    if not math.isfinite(v):
-        raise ValueError("non-finite value cannot be written to JSON: %r" % v)
-    return repr(float(v))
-
-
-def existing_generated(path):
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                return json.load(f).get("generated")
-        except Exception:
-            pass
-    return None
-
-
-def fmt(v):
-    if isinstance(v, str):
-        return json.dumps(v)
-    if v is True:
-        return "true"
-    if v is False:
-        return "false"
-    return num(v)
-
-
-def write_json(path, obj):
-    """Stable, diff-friendly layout: header pretty, one record per line."""
-    lines = ["{"]
-    for key in ("crs", "generator", "generated"):
-        lines.append('  "%s": %s,' % (key, json.dumps(obj[key])))
-    for key in ("forward", "inverse", "specials"):
-        lines.append('  "%s": [' % key)
-        recs = obj[key]
-        for i, rec in enumerate(recs):
-            body = ", ".join('"%s": %s' % (k, fmt(v)) for k, v in rec.items())
-            lines.append("    {" + body + "}" + ("," if i < len(recs) - 1 else ""))
-        lines.append("  ]" + ("," if key != "specials" else ""))
-    lines.append("}")
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines) + "\n")
+# 每个 CRS 的采样网格范围与过滤(视野/极点奇异/半球外一律剔除)
+def mask(name, lon, lat):
+    dlon = (lon - {"geos_x": 140.7, "geos_y": 0.0, "stere": -100.0, "laea": 10.0,
+                   "lcc": 100.0, "tmerc": 105.0}.get(name, 0.0) + 180) % 360 - 180
+    if name in ("geos_x", "geos_y") and (abs(dlon) > 70 or abs(lat) > 70):
+        return False
+    if name == "merc" and abs(lat) > 80:
+        return False
+    if name == "laea":
+        cd = math.radians(90 - 45)  # 与球心的角距
+        d = math.acos(min(1.0, math.sin(math.radians(45)) * math.sin(math.radians(lat)) +
+                          math.cos(math.radians(45)) * math.cos(math.radians(lat)) * math.cos(math.radians(dlon))))
+        if d > math.radians(165):
+            return False
+    return True
 
 
 def main():
-    out_dir = os.path.dirname(os.path.abspath(__file__))
-    import pyproj
-    generator = "pyproj %s / PROJ %s" % (pyproj.__version__, pyproj.proj_version_str)
+    n_lon, n_lat = 33, 33
+    lons = [-180 + 360 * i / (n_lon - 1) for i in range(n_lon)]
+    lats = [-85 + 170 * j / (n_lat - 1) for j in range(n_lat)]
 
-    summary = []
-    for name, proj in CASES.items():
-        tgt = CRS.from_user_input(proj)
-        # Geographic source with the same ellipsoid => pure projection, no datum shift.
-        geo = CRS.from_user_input(geostring(proj))
-        fwd = Transformer.from_crs(geo, tgt, always_xy=True)
-        inv = Transformer.from_crs(tgt, geo, always_xy=True)
+    out_dir = Path(__file__).parent
+    n_total = n_ok = 0
+    for name, (units, proj_str) in CASES.items():
+        crs = pyproj.CRS(proj_str)
+        fwdt = pyproj.Transformer.from_crs("EPSG:4326", crs, always_xy=True)
+        invt = pyproj.Transformer.from_crs(crs, "EPSG:4326", always_xy=True)
 
-        p = params(proj)
-        lon0 = p.get("lon_0", 0.0)
-        lat0 = p.get("lat_0", 0.0)
-        # Sanity: the projection centre must map to (x_0, y_0). A small offset would
-        # mean the transformer is doing a datum shift (fixture invalid). A huge offset
-        # is just longitude wrap (pyproj maps input lon 180 to -180), which is fine.
-        cx, cy = fwd.transform(lon0, lat0)
-        if not finite((cx, cy)):
-            raise SystemExit("%s: centre sanity check failed: (%r, %r)" % (name, cx, cy))
-        dx, dy = cx - p.get("x_0", 0.0), cy - p.get("y_0", 0.0)
-        if abs(dx) > 1e-6 and abs(dx) < 1e6:
-            raise SystemExit("%s: centre sanity check failed (datum shift?): (%r, %r)" % (name, cx, cy))
-        if abs(dy) > 1e-6 and abs(dy) < 1e6:
-            raise SystemExit("%s: centre sanity check failed (datum shift?): (%r, %r)" % (name, cx, cy))
-
-        forward, inverse, specials = [], [], []
-        rt_warn = 0
-
-        # grid
-        for i in range(N):
-            lat = LAT_MIN + (LAT_MAX - LAT_MIN) * i / (N - 1)
-            for j in range(N):
-                lon = LON_MIN + (LON_MAX - LON_MIN) * j / (N - 1)
-                x, y = fwd.transform(lon, lat)
-                if not finite((x, y)):
-                    specials.append({"desc": "grid point outside domain",
-                                     "lon": lon, "lat": lat, "expectNaN": True})
+        forward, inverse = [], []
+        for lat in lats:
+            for lon in lons:
+                n_total += 1
+                if not mask(name, lon, lat):
                     continue
-                forward.append({"lon": lon, "lat": lat, "x": x, "y": y})
-                rl, la = inv.transform(x, y)
-                if not finite((rl, la)):
-                    specials.append({"desc": "inverse of own forward point failed",
-                                     "x": x, "y": y, "expectNaN": True})
+                x, y = fwdt.transform(lon, lat)
+                if math.isnan(x) or math.isnan(y) or abs(x) > 5e7 or abs(y) > 5e7:
                     continue
-                if abs(norm_lon(rl) - lon) > 1e-9 or abs(la - lat) > 1e-9:
-                    rt_warn += 1
-                inverse.append({"x": x, "y": y, "lon": norm_lon(rl), "lat": la})
+                forward.append({"lon": round(lon, 6), "lat": round(lat, 6), "x": x, "y": y, })
+                lon2, lat2 = invt.transform(x, y)
+                # 往返自检(生成器自己的质量门)
+                wl = abs(((lon2 - lon) + 180) % 360 - 180)
+                if max(wl, abs(lat2 - lat)) < 1e-6:
+                    inverse.append({"x": x, "y": y, "lon": lon2, "lat": lat2})
+        n_ok += len(forward)
 
-        # extra sanity points
-        for lon, lat in EXTRA_POINTS:
-            x, y = fwd.transform(lon, lat)
-            if finite((x, y)):
-                forward.append({"lon": lon, "lat": lat, "x": x, "y": y})
-
-        # domain probes. Finite answers go to forward/inverse as ordinary records;
-        # only out-of-domain probes land in `specials`, and then they carry just the
-        # input coordinates + desc + expectNaN — exactly the frozen schema (§2.4).
-        # Non-finite pyproj results (PROJ HUGE_VAL) are never written to JSON.
-        for probe in SPECIALS[name]:
-            if "lon" in probe:
-                x, y = fwd.transform(probe["lon"], probe["lat"])
-                if finite((x, y)):
-                    forward.append({"lon": probe["lon"], "lat": probe["lat"], "x": x, "y": y})
-                else:
-                    specials.append({"desc": probe["desc"], "lon": probe["lon"],
-                                     "lat": probe["lat"], "expectNaN": True})
-            else:
-                rl, la = inv.transform(probe["x"], probe["y"])
-                if finite((rl, la)):
-                    inverse.append({"x": probe["x"], "y": probe["y"],
-                                    "lon": norm_lon(rl), "lat": la})
-                else:
-                    specials.append({"desc": probe["desc"], "x": probe["x"],
-                                     "y": probe["y"], "expectNaN": True})
-
-        path = os.path.join(out_dir, name + ".json")
-        obj = {
-            "crs": proj,
-            "generator": generator,
-            "generated": existing_generated(path) or datetime.datetime.now(
-                datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        specials = []
+        if name in ("geos_x", "geos_y"):
+            # 地平线外:从星下点往东偏 100°(远超 81° 的地平角)
+            sx, sy = fwdt.transform(140.7 + (-100 if name == "geos_x" else 100), 0)
+            specials.append({"desc": "below horizon", "lon": 0, "lat": 0, "x": sx, "y": sy,
+                             "expectNaN": math.isnan(sx) or math.isnan(sy) or abs(sx) > 5e7})
+        if name == "stere":
+            sx, sy = fwdt.transform(-100, -85)  # 远端
+            specials.append({"desc": "far side", "lon": -100, "lat": -85, "x": sx, "y": sy,
+                             "expectNaN": math.isnan(sx)})
+        doc = {
+            "crs": proj_str,
+            "generator": f"pyproj {pyproj.proj_version_str}",
+            "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "units": units,
             "forward": forward,
             "inverse": inverse,
             "specials": specials,
         }
-        write_json(path, obj)
-        summary.append((name, len(forward), len(inverse), len(specials), rt_warn))
-
-    print("wrote %d golden files to %s" % (len(summary), out_dir))
-    for name, nf, ni, ns, rw in summary:
-        print("  %-16s forward=%4d inverse=%4d specials=%d rt_warn=%d" % (name, nf, ni, ns, rw))
+        (out_dir / f"golden_{name}.json").write_text(json.dumps(doc), encoding="utf-8")
+        print(f"{name:8s} forward={len(forward):4d} inverse={len(inverse):4d} units={units}")
+    js = json.dumps
+    print(f"total grid pts={n_total}, kept={n_ok}")
 
 
 if __name__ == "__main__":

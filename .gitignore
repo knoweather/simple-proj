@@ -11,3 +11,7 @@ coverage.txt
 # 编辑器 / 系统
 .DS_Store
 Thumbs.db
+
+# AI 助手工作区 / IDE（不入库）
+.workbuddy-ai/
+.idea/
