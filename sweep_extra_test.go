@@ -86,7 +86,8 @@ func TestSweepExtra(t *testing.T) {
 	t.Logf("sweep generator: %s (%s)", s.Generator, s.Generated)
 
 	for _, name := range []string{"latlong", "eqc", "geos_x", "geos_y", "stere",
-		"laea", "lcc", "merc", "tmerc"} {
+		"stere_eq", "stere_obl", "laea", "laea_eq", "laea_np", "laea_sp",
+		"lcc", "merc", "tmerc"} {
 		c, ok := s.Cases[name]
 		if !ok {
 			t.Fatalf("sweep case %q missing", name)
@@ -191,7 +192,8 @@ func TestThreadSafety(t *testing.T) {
 	s := loadSweep(t)
 	const workers = 8
 
-	for _, name := range []string{"stere", "laea", "lcc", "merc", "tmerc"} {
+	for _, name := range []string{"stere", "stere_eq", "stere_obl", "laea",
+		"laea_eq", "laea_np", "laea_sp", "lcc", "merc", "tmerc"} {
 		c := s.Cases[name]
 		crs, err := Parse(c.CRS)
 		if err != nil {

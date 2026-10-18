@@ -12,6 +12,55 @@ import (
 	"testing"
 )
 
+// TestLaeaAspects covers all four aspect modes (equatorial lat_0=0, oblique
+// lat_0=45, north pole lat_0=90, south pole lat_0=-90) through the full contract
+// path. The golden fixture pins a single aspect; the others' FORWARD and the
+// polar INVERSE branches were unverified. Values are pyproj 3.8.0 / PROJ 9.8.1.
+func TestLaeaAspects(t *testing.T) {
+	forwardRef := []struct {
+		crs            string
+		lon, lat, x, y float64
+	}{
+		{"+proj=laea +lat_0=0 +lon_0=0 +ellps=WGS84", 10, 40, 907187.469494, 4354354.413381},
+		{"+proj=laea +lat_0=0 +lon_0=0 +ellps=WGS84", -170, 60, -1104728.923898, 10945358.583258},
+		{"+proj=laea +lat_0=0 +lon_0=0 +ellps=WGS84", 179, 80, 30215.444776, 9753018.816838},
+		{"+proj=laea +lat_0=0 +lon_0=0 +ellps=WGS84", 10, -30, 997379.656859, -3293918.633398},
+		{"+proj=laea +lat_0=45 +lon_0=0 +ellps=WGS84", 10, 40, 852101.370902, -503881.940598},
+		{"+proj=laea +lat_0=45 +lon_0=0 +ellps=WGS84", -170, 60, -699595.994183, 7713787.452373},
+		{"+proj=laea +lat_0=90 +lon_0=0 +ellps=WGS84", 10, 40, 937306.576442, -5315729.746381},
+		{"+proj=laea +lat_0=90 +lon_0=0 +ellps=WGS84", -170, 60, -574744.133441, 3259535.954916},
+		{"+proj=laea +lat_0=90 +lon_0=0 +ellps=WGS84", 179, 80, 19466.572101, 1115239.168758},
+		{"+proj=laea +lat_0=-90 +lon_0=0 +ellps=WGS84", 10, 40, 2004289.690097, 11366891.680694},
+		{"+proj=laea +lat_0=-90 +lon_0=0 +ellps=WGS84", -170, 60, -2136677.317974, -12117699.227815},
+		{"+proj=laea +lat_0=-90 +lon_0=0 +ellps=WGS84", 179, 80, 221525.143611, -12691166.977747},
+	}
+	for _, c := range forwardRef {
+		cr, err := Parse(c.crs)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", c.crs, err)
+		}
+		p, err := cr.NewProjection()
+		if err != nil {
+			t.Fatalf("NewProjection(%q): %v", c.crs, err)
+		}
+		x, y, err := p.Forward(c.lon, c.lat)
+		if err != nil {
+			t.Fatalf("Forward(%q, %v, %v): %v", c.crs, c.lon, c.lat, err)
+		}
+		if math.Abs(x-c.x) > 5e-4 || math.Abs(y-c.y) > 5e-4 {
+			t.Fatalf("%s at (%v, %v): got (%.6f, %.6f) want (%.6f, %.6f)",
+				c.crs, c.lon, c.lat, x, y, c.x, c.y)
+		}
+		rl, ra, err := p.Inverse(x, y)
+		if err != nil {
+			t.Fatalf("Inverse(%q): %v", c.crs, err)
+		}
+		if lonDiff(rl, c.lon) > 1e-9 || math.Abs(ra-c.lat) > 1e-9 {
+			t.Fatalf("%s round trip (%v, %v) -> (%.10f, %.10f)", c.crs, c.lon, c.lat, rl, ra)
+		}
+	}
+}
+
 func TestGoldenLaea(t *testing.T) {
 	g := loadGolden(t, "golden_laea.json")
 	p := goldenParams(g.CRS)

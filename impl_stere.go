@@ -86,9 +86,16 @@ func newStereKernel(a, b, lat0, lon0, k float64) *stereKernel {
 		X := ConformalLat(lat0, e)
 		q.sinX1, q.cosX1 = math.Sin(X), math.Cos(X)
 	default:
+		// EQUIT (lat_0 == 0): also needs sinX1/cosX1 from the conformal
+		// latitude of the origin, exactly as PROJ's stere_setup does for both
+		// OBLIQ and EQUIT. Leaving them at the zero value made the inverse
+		// atan2(0, akm1) == 0 -> sinphi == 0 -> latitude resolved to 0 for
+		// the equatorial aspect (golden is polar-only, so uncaught).
 		q.mode = stereEquit
 		t := math.Sin(lat0)
 		q.akm1 = 2 * k * math.Cos(lat0) / math.Sqrt(1-e*e*t*t)
+		X := ConformalLat(lat0, e)
+		q.sinX1, q.cosX1 = math.Sin(X), math.Cos(X)
 	}
 	return q
 }
@@ -134,33 +141,43 @@ func (q *stereKernel) inverse(x, y float64) (lon, lat float64, ok bool) {
 	rho := math.Hypot(x, y) / q.a
 	switch q.mode {
 	case stereOblq, stereEquit:
+		// rho above is in a-units (Hypot/a); the projected x/y are in metres,
+		// so normalise them to a-units before mixing with rho (PROJ works in a
+		// single consistent linear unit). xA/yA keep the inverse a clean
+		// dimensionless system matching stere_e_inverse.
+		xA, yA := x/q.a, y/q.a
 		tp := 2 * math.Atan2(rho*q.cosX1, q.akm1)
 		cosphi, sinphi := math.Cos(tp), math.Sin(tp)
 		phiL := 0.0
 		if rho == 0 {
 			phiL = math.Asin(cosphi * q.sinX1)
 		} else {
-			phiL = math.Asin(cosphi*q.sinX1 + y*sinphi*q.cosX1/rho)
+			phiL = math.Asin(cosphi*q.sinX1 + yA*sinphi*q.cosX1/rho)
 		}
 		if math.IsNaN(phiL) {
 			return math.NaN(), math.NaN(), false
 		}
-		tp = math.Tan(math.Pi/4 + phiL/2)
-		phi, ok := iterateGeodetic(q.e, tp, phiL, math.Pi/2, 0.5*q.e)
+		// tp is REASSIGNED here for the LATITUDE iteration only (PROJ:
+		// tp = tan(.5*(HALFPI + phi_l))). The LONGITUDE below must keep using
+		// the FIRST tp's sin/cos (sinphi/cosphi) — PROJ's stere_e_inverse
+		// builds (xy.x, xy.y) from the first tp and atan2's those, NOT the
+		// reassigned tp. Using the reassigned tp (and, for OBLIQ, leaking a
+		// stray cosX1 onto xy.x, plus the uninitialised sinX1/cosX1 for the
+		// EQUIT origin) produced wrong longitudes — and a zero latitude — for
+		// the equatorial aspect; the golden fixture is polar-only, so this went
+		// uncaught until 2026-10-18.
+		tpLat := math.Tan(math.Pi/4 + phiL/2)
+		phi, ok := iterateGeodetic(q.e, tpLat, phiL, math.Pi/2, 0.5*q.e)
 		if !ok {
 			return math.NaN(), math.NaN(), false
 		}
-		lam := 0.0
+		var lam float64
 		if q.mode == stereEquit {
-			c := math.Cos(tp)
-			if c != 0 || x != 0 {
-				lam = math.Atan2(x*math.Sin(tp), c*rho)
-			}
+			lam = math.Atan2(xA*sinphi, rho*cosphi)
 		} else {
-			c := math.Cos(tp) - q.sinX1*math.Sin(phi)
-			if c != 0 || x != 0 {
-				lam = math.Atan2(x*math.Sin(tp)*q.cosX1, c*rho)
-			}
+			// PROJ: xy.x = x*sinphi; xy.y = rho*cosX1*cosphi - y*sinX1*sinphi
+			// (xy.x carries NO cosX1 factor — the stray cosX1 was the bug).
+			lam = math.Atan2(xA*sinphi, rho*q.cosX1*cosphi-yA*q.sinX1*sinphi)
 		}
 		return q.lon0 + lam, phi, true
 	default: // polar aspect

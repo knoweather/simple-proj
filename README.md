@@ -171,8 +171,10 @@ wg.Wait()
 的往返门以“与 pyproj 自身往返一致”为准（PROJ 自己也漂 1.4e-8 度）。
 
 扩展 sweep（`xcheck/sweep_extra.json`，生成器 `xcheck/gen_sweep.py`）是一套
-独立于 golden 网格的新点集（结构化边角 + 固定种子伪随机），防止实现“恰好拟合”
-fixture 网格； fixture 手册见 `xcheck/README.md`。
+独立于 golden 网格的新点集（结构化边角 + 固定种子伪随机），并覆盖每个投影的多种
+**方面**（stere/laea 的赤道 / 斜轴 / 两极方面都单独建 CRS，共 14 例），防止实现
+“恰好拟合”fixture 网格而漏掉模式盲点（正是这个升级逮住了 stere 非极轴方面反向
+长期错误的 bug）； fixture 手册见 `xcheck/README.md`。
 
 ## 公共 API 契约（satpy 侧接入面）
 

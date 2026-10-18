@@ -192,6 +192,56 @@ func TestStereAdapter(t *testing.T) {
 	}
 }
 
+// TestStereAspects covers the three projection aspects (equatorial lat_0=0,
+// oblique lat_0=45, polar) through the full contract path. The golden fixture
+// only exercises the polar aspect (lat_0=90), and TestStereVariants only pins a
+// couple of oblique forward points — so the equatorial/oblique FORWARD and the
+// equatorial INVERSE branches were unverified. Values are pyproj 3.8.0 /
+// PROJ 9.8.1 ground truth.
+func TestStereAspects(t *testing.T) {
+	// pyproj reference for equatorial (lat_0=0) and oblique (lat_0=45).
+	forwardRef := []struct {
+		crs            string
+		lon, lat, x, y float64
+	}{
+		{"+proj=stere +lat_0=0 +lon_0=0 +ellps=WGS84", 10, 40, 968726.947836, 4649742.655420},
+		{"+proj=stere +lat_0=0 +lon_0=0 +ellps=WGS84", -170, 60, -2203716.057171, 21833902.609421},
+		{"+proj=stere +lat_0=0 +lon_0=0 +ellps=WGS84", 179, 80, 47151.116933, 15219624.952877},
+		{"+proj=stere +lat_0=0 +lon_0=0 +ellps=WGS84", 10, -30, 1036266.482543, -3422349.026030},
+		{"+proj=stere +lat_0=45 +lon_0=0 +ellps=WGS84", 10, 40, 854524.278680, -505314.703136},
+		{"+proj=stere +lat_0=45 +lon_0=0 +ellps=WGS84", -170, 60, -883242.645320, 9738671.542770},
+		{"+proj=stere +lat_0=45 +lon_0=0 +ellps=WGS84", 179, 80, 24744.512702, 6665713.357645},
+		{"+proj=stere +lat_0=45 +lon_0=0 +ellps=WGS84", 10, -30, 1527936.033253, -9686836.601875},
+	}
+	for _, c := range forwardRef {
+		cr, err := Parse(c.crs)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", c.crs, err)
+		}
+		p, err := cr.NewProjection()
+		if err != nil {
+			t.Fatalf("NewProjection(%q): %v", c.crs, err)
+		}
+		x, y, err := p.Forward(c.lon, c.lat)
+		if err != nil {
+			t.Fatalf("Forward(%q, %v, %v): %v", c.crs, c.lon, c.lat, err)
+		}
+		if math.Abs(x-c.x) > 5e-4 || math.Abs(y-c.y) > 5e-4 {
+			t.Fatalf("%s at (%v, %v): got (%.6f, %.6f) want (%.6f, %.6f)",
+				c.crs, c.lon, c.lat, x, y, c.x, c.y)
+		}
+		// Inverse of our own forward must round trip (catches the equatorial
+		// inverse branch, which the golden fixture never reaches).
+		rl, ra, err := p.Inverse(x, y)
+		if err != nil {
+			t.Fatalf("Inverse(%q): %v", c.crs, err)
+		}
+		if lonDiff(rl, c.lon) > 1e-9 || math.Abs(ra-c.lat) > 1e-9 {
+			t.Fatalf("%s round trip (%v, %v) -> (%.10f, %.10f)", c.crs, c.lon, c.lat, rl, ra)
+		}
+	}
+}
+
 // TestStereRoundTrip is the "at least 3 sanity checks" gate from DESIGN §2.3,
 // run through our own kernel rather than through pyproj.
 func TestStereRoundTrip(t *testing.T) {

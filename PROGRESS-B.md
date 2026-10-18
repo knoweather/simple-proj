@@ -56,6 +56,17 @@ authalic 系数坑(FORMULA-NOTES §0.1):`C_i = (i+1)/(2i+1)·e^{2i}`,项数 n≥
 forward 最大绝对差 **4.539e-4 m** at `(0,-89.9)`(坐标 1.3e10 m),相对 **3.5e-14**(C#3);
 inverse 最大 **1.639e-11 deg**。`stereEffectiveK` 口径已用 pyproj 校正(见 C#3 一带)。
 
+**C#15(本会话):非极轴方面反向曾经完全错。** golden 与旧 sweep 都只用 `lat_0=90`
+一套 CRS(模式盲),赤道/斜轴方面的反向(lat→0、经度打乱)长期没被测出——`go test`
+全绿、覆盖率 92% 也盖不住,因为 `inverse` 分支覆盖率只有 25%(只跑了极轴模式)。
+修复两处(详见 `impl_stere.go` 注释):
+1. `newStereKernel` 的 EQUIT 分支漏初始化 `sinX1`/`cosX1`(Go 零值 → 纬度迭代收敛到 0);
+2. `inverse` 用了被重赋值的球面近似 `tp` 算经度(且 OBLIQ 分支多挂了一个 `cosX1`),
+   并漏掉 `/a` 归一(坐标以米为单位未缩放回椭球 a 单位)。
+补 `TestStereAspects` 直测赤道(`lat_0=0`)与斜轴(`lat_0=45`);新多方面 sweep 一并覆盖。
+末态 sweep:`stere_eq` forward 最大 **1.5e-8 m** / `stere_obl` 最大 **2.0e-6 m**,
+inverse 均 ≤ **4e-13 deg**。**已结案。**
+
 ### impl_laea.go(对拍通过)
 forward 最大 **2.971e-7 m**,inverse 最大 **1.378e-12 deg**,2 个 specials 全过。
 
@@ -129,6 +140,22 @@ forward 最大 **2.971e-7 m**,inverse 最大 **1.378e-12 deg**,2 个 specials �
   `D:\simple-proj\.workbuddy-ai/`(daily log / MEMORY.md,agent 私有),不该进仓库;
   `.gitignore` 是 A 的文件(B 不动),建议 A 补一行 `.workbuddy-ai/`——否则哪天一次
   `git add -A`(day0 就发生过一次扫描效应)会把 B 的私有笔记扫进提交。
+  *(后续 `.gitignore` 已含 `.workbuddy-ai/` 与 `.idea/`,本项实际已落地。)*
+
+- **C#15 stere 非极轴方面反向 bug(本会话发现并修复)**:详见 `impl_stere.go` 注释与
+  上文 `impl_stere.go` 段。golden + 旧 sweep 每投影仅一套 CRS,犯了"模式盲",使赤道 /
+  斜轴方面反向(lat→0、经度打乱)漏测。`newStereKernel` 的 EQUIT 分支漏初始化
+  `sinX1`/`cosX1`;`inverse` 用重赋值的球面 `tp` 算经度且 OBLIQ 多挂 `cosX1`、漏 `/a`
+  归一。修复 + 加 `TestStereAspects` 直测赤道/斜轴。**已结案。**
+
+- **C#16 sweep 多方面升级 + gen_sweep/gen_golden 解耦修复**:旧 sweep 与 golden 同犯
+  模式盲,升级 `CASES` 增 `stere_eq`/`stere_obl`/`laea_eq`/`laea_np`/`laea_sp` 五套
+  多方面 CRS,消费端 `sweep_extra_test.go` 遍历名单同步扩展(含 `TestThreadSafety`)。
+  A 的 06d1455 把 `gen_golden.py` 重写为 EPSG:4326 源并删掉 `gen_sweep.py` 依赖的
+  `geostring`/`norm_lon`/`finite`,导致 sweep 再生 `AttributeError`。本地在
+  `gen_sweep.py` 重实现这三个 helper(**matched-ellipsoid 语义,不能用裸 EPSG:4326——
+  Go 不做基准变换,参考必须与目标椭球一致,否则 geos_x 等偏 ~mm**),重新生成
+  `sweep_extra.json`(14 例)。**已结案。**
 
 ## 覆盖率(B 文件,`go tool cover -func`)
 
@@ -211,6 +238,27 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
   桥接/协作/许可)的基础上,补:项目背景(为什么做/为什么不用 pyproj/双 AI 协作)、
   特性总览表、参数语义与域规则表、9 投影精度表(golden + sweep 双列)、批量性能表
   (A+B 共 8 投影)、测试指南、项目结构与所有权表。
+
+- 2026-10-18 [B·续] **健康检查 + 收口(用户:"有问题别管 ab 了 都你干就行了")**:
+  - **发现并修复 stere 非极轴方面反向 bug(C#15)**:覆盖率分析暴露 `impl_stere`
+    forward 62.5% / inverse 25% 只覆盖极轴模式;加 `TestStereAspects`(赤道/斜轴)
+    立刻复现 (10,40)→(90,0) 的离谱反向。根因两处:`newStereKernel` EQUIT 漏初始化
+    `sinX1/cosX1`;`inverse` 用重赋值的球面 `tp` 算经度 + OBLIQ 多挂 `cosX1` + 漏 `/a`
+    归一。修复后两测试 PASS。
+  - **sweep 多方面升级(C#16)**:给 stere/laea 增赤道/斜轴/两极 5 套 CRS,消费端遍历
+    名单扩展(含 `TestThreadSafety`),重新生成 `sweep_extra.json`(14 例)。sweep 全
+    绿,forward 最大 stere_obl 2.0e-6 m / stere_eq 1.5e-8 m / laea_* ≤ 4.5e-8 m,
+    inverse ≤ 4e-13 deg。这层升级正是为了把"模式盲"挡在 CI 外。
+  - **修 gen_sweep.py 再生断裂**:A 的 06d1455 把 `gen_golden.py` 改写成 EPSG:4326 源
+    并删了 `geostring`/`norm_lon`/`finite`,`gen_sweep.py` 一 import 就 `AttributeError`。
+    在 `gen_sweep.py` 本地重实现这三个 helper(保留 matched-ellipsoid 语义,不用裸
+    EPSG:4326)。
+  - 末态门:**vet 0 / 全量测试绿 / gofmt(LF)干净 / 包覆盖率 94.4%**(stere/laea 分支
+    补满后从 92.2% 升上来)。
+  - 行尾符:本机 `core.autocrlf=true` 使工作树 CRLF、仓库 blob 实际也是 CRLF,与
+    C#11 声称的"仓库存 LF"不符,导致 `gofmt` 反复报 diff。本会话加 `.gitattributes`
+    锁定源码 `eol=lf` 并 `git add --renormalize`,把全仓统一成 LF,根除该 churn
+    (C#11 意图的真正落地,用户已授权越过 A/B 协作约束)。
 
 ## HANDOVER(下个会话可直接接)
 

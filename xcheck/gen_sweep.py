@@ -13,23 +13,56 @@ Run from repo root:  python xcheck/gen_sweep.py
 Deps:                pyproj (same as gen_golden.py)
 
 Semantics (identical plumbing to gen_golden.py):
-  * geographic source CRS keeps only ellipsoid tokens (gen_golden.geostring);
+  * geographic source CRS keeps only ellipsoid tokens (local geostring helper),
+    so the source and target share the ellipsoid and the transform is a PURE
+    projection — this is what the Go implementation computes (it projects the
+    given lon/lat on the target ellipsoid with no datum shift);
   * Transformer.from_crs(geo, tgt, always_xy=True) => pure projection;
   * non-finite pyproj answers become specials with expectNaN (JSON cannot hold
     inf/NaN); inverse records take x/y from pyproj forward and ask pyproj back;
-  * output longitudes are normalized to [-180, 180) (gen_golden.norm_lon).
+  * output longitudes are normalized to [-180, 180) (local norm_lon).
+
+NOTE: gen_golden.py was rewritten (commit 06d1455) and no longer exposes the
+geostring / norm_lon / finite helpers this script used. They are re-implemented
+locally below — single source of truth now lives here, matched-ellipsoid
+semantics preserved (see the note above about why we must NOT switch to a bare
+"EPSG:4326" source: Go does no datum shift, so the reference must share the
+target's ellipsoid or the sweep drifts ~mm off Go for e.g. geos_x).
 """
 
 import datetime
 import json
 import math
 import os
+import re
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import gen_golden  # reuse geostring / norm_lon / finite — single source of truth
-
 from pyproj import CRS, Transformer
+
+
+def geostring(proj):
+    """Build a geographic (latlong) CRS carrying the SAME ellipsoid tokens as
+    `proj`, so that from_crs(geo, tgt) is a pure projection with no datum
+    shift. Tokens kept: ellps, a, b, datum, R, rf, f, towgs84."""
+    parts = []
+    for m in re.finditer(r"\+([A-Za-z_]+)=([^\s+]*)", proj):
+        key, val = m.group(1), m.group(2)
+        if key in ("ellps", "a", "b", "datum", "R", "rf", "f", "towgs84"):
+            parts.append("+%s=%s" % (key, val))
+    base = "+proj=latlong " + " ".join(parts)
+    if not parts:
+        base += " +ellps=WGS84"
+    return base
+
+
+def norm_lon(lon):
+    """Wrap a longitude to [-180, 180)."""
+    return (lon + 180.0) % 360.0 - 180.0
+
+
+def finite(p):
+    """True iff every coordinate in the tuple is finite."""
+    return all(math.isfinite(v) for v in p)
 
 
 class LCG:
@@ -55,7 +88,12 @@ CASES = {
               "+a=6378137 +b=6356752.3 +units=m +sweep=x",
     "geos_y": "+proj=geos +lon_0=0 +h=35785863 +ellps=WGS84 +sweep=y",
     "stere": "+proj=stere +lat_0=90 +lat_ts=60 +lon_0=-100 +ellps=WGS84",
+    "stere_eq": "+proj=stere +lat_0=0 +lon_0=0 +ellps=WGS84",
+    "stere_obl": "+proj=stere +lat_0=45 +lon_0=0 +ellps=WGS84",
     "laea": "+proj=laea +lat_0=45 +lon_0=10 +ellps=WGS84 +x_0=0 +y_0=0",
+    "laea_eq": "+proj=laea +lat_0=0 +lon_0=0 +ellps=WGS84 +x_0=0 +y_0=0",
+    "laea_np": "+proj=laea +lat_0=90 +lon_0=0 +ellps=WGS84 +x_0=0 +y_0=0",
+    "laea_sp": "+proj=laea +lat_0=-90 +lon_0=0 +ellps=WGS84 +x_0=0 +y_0=0",
     "lcc": "+proj=lcc +lat_1=30 +lat_2=60 +lat_0=0 +lon_0=100 +ellps=WGS84",
     "merc": "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0 +y_0=0 +units=m",
     "tmerc": "+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84",
@@ -74,8 +112,18 @@ EDGES = {
                (30, 30), (-30, -30), (0, 80), (55, -60)],
     "stere": [(-100, 90), (-100, 0), (-100, 45), (-100, -45), (-10, 60), (-190, -60),
               (80, 30), (-170, 10), (150, -80), (100, -85), (-100, 89), (-100, -89)],
+    "stere_eq": [(0, 0), (0, 45), (0, -45), (90, 30), (-90, -30), (180, 60),
+                (-180, -60), (45, 80), (-45, -80), (10, 89), (-10, -89)],
+    "stere_obl": [(0, 45), (0, -45), (0, 0), (-170, 45), (170, -45), (100, 45),
+                 (100, 80), (10, 88), (-80, -10), (55, -80), (10, -88), (170, 80)],
     "laea": [(10, 45), (10, -45), (10, 0), (-170, 45), (-170, -45), (100, 45),
              (100, 80), (10, 88), (-80, -10), (55, -80), (10, -88), (170, 80)],
+    "laea_eq": [(0, 0), (0, 45), (0, -45), (90, 30), (-90, -30), (180, 60),
+                (-180, -60), (45, 80), (-45, -80), (10, 89), (-10, -89)],
+    "laea_np": [(0, 90), (0, -45), (0, 45), (90, 45), (-90, -45), (10, 80),
+                (170, 80), (-170, 80), (45, 85), (-45, 85), (10, 30)],
+    "laea_sp": [(0, -90), (0, 45), (0, -45), (90, 45), (-90, -45), (10, 80),
+                (170, 80), (-170, 80), (45, 85), (-45, 85), (10, 30)],
     "lcc": [(100, 0), (100, 30), (100, 60), (100, 89), (100, -89), (100, 45),
             (10, 0), (-170, 0), (10, 45), (-170, -45), (100, -45), (55, 85)],
     "merc": [(0, 0), (0, 89.9), (0, -89.9), (179.9, 45), (-179.9, -45), (90, 60),
@@ -94,7 +142,12 @@ BOXES = {
     "geos_x": (140.7 - 64, 140.7 + 64, -64, 64),
     "geos_y": (-64, 64, -64, 64),
     "stere": (-180, 180, -88, 88),
+    "stere_eq": (-180, 180, -88, 88),
+    "stere_obl": (-180, 180, -88, 88),
     "laea": (-180, 180, -88, 88),
+    "laea_eq": (-180, 180, -88, 88),
+    "laea_np": (-180, 180, -89, 89),
+    "laea_sp": (-180, 180, -89, 89),
     "lcc": (-180, 180, -89, 89),
     "merc": (-180, 180, -89.5, 89.5),
     "tmerc": (30, 180, -88, 88),
@@ -131,7 +184,7 @@ def main():
 
     for name, proj in CASES.items():
         tgt = CRS.from_user_input(proj)
-        geo = CRS.from_user_input(gen_golden.geostring(proj))
+        geo = CRS.from_user_input(geostring(proj))
         fwd = Transformer.from_crs(geo, tgt, always_xy=True)
         inv = Transformer.from_crs(tgt, geo, always_xy=True)
 
@@ -144,12 +197,12 @@ def main():
         forward, inverse, specials = [], [], []
         for lon, lat in pts:
             x, y = fwd.transform(lon, lat)
-            if not gen_golden.finite((x, y)):
+            if not finite((x, y)):
                 # random point slipped out of the assumed domain box: drop it
                 # (the SPECIALS list is where out-of-domain probes belong).
                 continue
             rl, la = inv.transform(x, y)
-            if not gen_golden.finite((rl, la)):
+            if not finite((rl, la)):
                 continue
             forward.append({"lon": lon, "lat": lat, "x": x, "y": y,
                             # pyproj's OWN forward-then-inverse round trip. At the
@@ -158,19 +211,19 @@ def main():
                             # ~1e-8 deg, so the Go side checks CONSISTENCY with
                             # pyproj's round trip there instead of the absolute
                             # 1e-9 deg gate (C#7/C#13 philosophy).
-                            "rt_lon": gen_golden.norm_lon(rl), "rt_lat": la})
+                            "rt_lon": norm_lon(rl), "rt_lat": la})
             inverse.append({"x": x, "y": y,
-                            "lon": gen_golden.norm_lon(rl), "lat": la})
+                            "lon": norm_lon(rl), "lat": la})
 
         for probe in SPECIALS.get(name, []):
             if "lon" in probe:
                 x, y = fwd.transform(probe["lon"], probe["lat"])
                 rec = {"desc": probe["desc"], "lon": probe["lon"], "lat": probe["lat"],
-                       "expectNaN": not gen_golden.finite((x, y))}
+                       "expectNaN": not finite((x, y))}
             else:
                 rl, la = inv.transform(probe["x"], probe["y"])
                 rec = {"desc": probe["desc"], "x": probe["x"], "y": probe["y"],
-                       "expectNaN": not gen_golden.finite((rl, la))}
+                       "expectNaN": not finite((rl, la))}
             if rec["expectNaN"]:
                 specials.append(rec)
 
