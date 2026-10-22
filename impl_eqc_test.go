@@ -250,3 +250,34 @@ func TestEqcRoundtripGrid(t *testing.T) {
 	}
 	probeReport(t, "roundtrip-grid", &eqcAcc{maxRnd: maxE})
 }
+
+// TestEqcFalseOrigin +x_0/+y_0 是 PROJ pj_fwd 末端的仿射偏移(米)。
+// 参照值 = pyproj 3.8.0 / PROJ 9.8.1 实测(2026-10-22):
+//
+//	Transformer.from_crs(EPSG:4326, CRS.from_proj4(...))  (10,20) → 下列值
+//
+// 改造前 eqc 把 x_0/y_0 静默丢掉,这里锁死语义。
+func TestEqcFalseOrigin(t *testing.T) {
+	p := mustEqc(t, "+proj=eqc +lat_ts=0 +lon_0=0 +x_0=500000 +y_0=1000000 +ellps=WGS84")
+	x, y, err := p.Forward(10, 20)
+	if err != nil {
+		t.Fatalf("Forward: %v", err)
+	}
+	const wantX, wantY = 1613194.9079327357, 3212366.254171633
+	if math.Abs(x-wantX) > eqcFwdTol || math.Abs(y-wantY) > eqcFwdTol {
+		t.Errorf("Forward(10,20) = (%.10f, %.10f), want (%.10f, %.10f)", x, y, wantX, wantY)
+	}
+	lon, lat, err := p.Inverse(x, y)
+	if err != nil {
+		t.Fatalf("Inverse: %v", err)
+	}
+	if math.Abs(lon-10) > eqcInvTol || math.Abs(lat-20) > eqcInvTol {
+		t.Errorf("Inverse 往返 = (%.12f, %.12f), want (10, 20)", lon, lat)
+	}
+	// 偏移是纯加法:与零偏移实例逐位相差恰好 (x_0, y_0)。
+	base := mustEqc(t, "+proj=eqc +lat_ts=0 +lon_0=0 +ellps=WGS84")
+	bx, by, _ := base.Forward(10, 20)
+	if x-bx != 500000 || y-by != 1000000 {
+		t.Errorf("偏移量不符: dx=%v dy=%v", x-bx, y-by)
+	}
+}

@@ -168,3 +168,27 @@ func TestGeosErrors(t *testing.T) {
 		t.Errorf("Inverse(NaN) 应报错")
 	}
 }
+
+// TestGeosFalseOrigin geos 的 +x_0/+y_0 同样是末端仿射偏移。
+// 参照值 = pyproj 3.8.0 / PROJ 9.8.1 实测(2026-10-22):
+//
+//	+proj=geos +h=35785863 +lon_0=140.7 +x_0=1000 +y_0=2000 +ellps=WGS84
+//	(140,20) → (-71475.87148593215, 2144190.675610925)
+func TestGeosFalseOrigin(t *testing.T) {
+	p := mustGeos(t, "+proj=geos +h=35785863 +lon_0=140.7 +x_0=1000 +y_0=2000 +ellps=WGS84")
+	x, y, err := p.Forward(140, 20)
+	if err != nil {
+		t.Fatalf("Forward: %v", err)
+	}
+	const wantX, wantY = -71475.87148593215, 2144190.675610925
+	if math.Abs(x-wantX) > geosFwdTol || math.Abs(y-wantY) > geosFwdTol {
+		t.Errorf("Forward(140,20) = (%.10f, %.10f), want (%.10f, %.10f)", x, y, wantX, wantY)
+	}
+	lon, lat, err := p.Inverse(x, y)
+	if err != nil {
+		t.Fatalf("Inverse: %v", err)
+	}
+	if math.Abs(lon-140) > geosInvTol || math.Abs(lat-20) > geosInvTol {
+		t.Errorf("Inverse 往返 = (%.12f, %.12f), want (140, 20)", lon, lat)
+	}
+}

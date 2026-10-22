@@ -33,6 +33,7 @@ type geosProj struct {
 	rp2    float64 // 1−es
 	rpInv2 float64 // 1/(1−es)
 	lon0   float64 // lon_0(度)
+	x0, y0 float64 // false easting / northing(米,PROJ 在 pj_fwd 里加)
 }
 
 func newGeos(c *CRS) (Projection, error) {
@@ -49,6 +50,8 @@ func newGeos(c *CRS) (Projection, error) {
 		return nil, fmt.Errorf("proj: geos +sweep=%q 非法(应为 x 或 y)", sweep)
 	}
 	lon0, _ := paramFloat(c, "lon_0", 0)
+	x0, _ := paramFloat(c, "x_0", 0)
+	y0, _ := paramFloat(c, "y_0", 0)
 	p := &geosProj{
 		crs:  c,
 		flip: sweep == "x",
@@ -56,6 +59,8 @@ func newGeos(c *CRS) (Projection, error) {
 		rg1:  rg1,
 		rg:   1 + rg1,
 		lon0: lon0,
+		x0:   x0,
+		y0:   y0,
 	}
 	p.cC = p.rg*p.rg - 1
 	el := c.Ellipsoid
@@ -116,7 +121,7 @@ func (p *geosProj) Forward(lon, lat float64) (x, y float64, err error) {
 		xr = p.rg1 * math.Atan(Vy/tmp)
 		yr = p.rg1 * math.Atan(Vz/math.Hypot(Vy, tmp))
 	}
-	return p.aMul * xr, p.aMul * yr, nil
+	return p.aMul*xr + p.x0, p.aMul*yr + p.y0, nil
 }
 
 // Inverse x, y(米)→ lon, lat(度)。
@@ -125,8 +130,8 @@ func (p *geosProj) Inverse(x, y float64) (lon, lat float64, err error) {
 	if math.IsNaN(x) || math.IsInf(x, 0) || math.IsNaN(y) || math.IsInf(y, 0) {
 		return math.NaN(), math.NaN(), fmt.Errorf("proj: geos Inverse 输入非有限 (%v,%v)", x, y)
 	}
-	xn := x / p.aMul // a-归一(同 PROJ)
-	yn := y / p.aMul
+	xn := (x - p.x0) / p.aMul // a-归一(同 PROJ)
+	yn := (y - p.y0) / p.aMul
 
 	var Vx, Vy, Vz float64
 	Vx = -1

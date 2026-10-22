@@ -36,6 +36,7 @@ type eqcProj struct {
 	Finv   [auxLatOrder]float64 // μ→φ 系数
 	phi0   float64              // lat_0(rad)(球体 y 用)
 	lon0   float64              // lon_0(度)
+	x0, y0 float64              // false easting / northing(米)
 	sphere bool
 }
 
@@ -48,8 +49,10 @@ func newEqc(c *CRS) (Projection, error) {
 	if math.Abs(latTs) >= 90 {
 		return nil, fmt.Errorf("proj: eqc +lat_ts=%v: |lat_ts| 应 < 90 度(cosφ_ts=0 会除零,PROJ 语义)", latTs)
 	}
-	// x_0/y_0 偏移不在此处理:v0 契约 Forward/Inverse 不含仿射偏移
-	// (DESIGN §1.1;golden CRS 中 x_0/y_0 恒 0)。
+	// x_0/y_0 是 PROJ pj_fwd 末端的仿射偏移(米,加在投影坐标上);
+	// golden CRS 里恒为 0,但 +x_0=500000 这类 EPSG 定义很常见,不能忽略。
+	x0, _ := paramFloat(c, "x_0", 0)
+	y0, _ := paramFloat(c, "y_0", 0)
 	lon0, _ := paramFloat(c, "lon_0", 0)
 	phi0, _ := paramFloat(c, "lat_0", 0)
 	el := c.Ellipsoid
@@ -58,6 +61,8 @@ func newEqc(c *CRS) (Projection, error) {
 		a:    el.A,
 		phi0: phi0 * deg2rad,
 		lon0: lon0,
+		x0:   x0,
+		y0:   y0,
 	}
 
 	if el.Sphere {
@@ -89,9 +94,9 @@ func (p *eqcProj) Forward(lon, lat float64) (x, y float64, err error) {
 	dlam := normLonDeg(lon-p.lon0) * deg2rad
 	phi := lat * deg2rad
 	if p.sphere {
-		return p.rc * dlam, p.a * (phi - p.phi0), nil
+		return p.rc*dlam + p.x0, p.a*(phi-p.phi0) + p.y0, nil
 	}
-	return p.rc * dlam, p.a * (mlfn(phi, p.F, p.en0) - p.m0), nil
+	return p.rc*dlam + p.x0, p.a*(mlfn(phi, p.F, p.en0)-p.m0) + p.y0, nil
 }
 
 // Inverse x, y(米)→ lon/lat(度)。eqc 全平面可逆,无定义域错误;
@@ -100,13 +105,13 @@ func (p *eqcProj) Inverse(x, y float64) (lon, lat float64, err error) {
 	if math.IsNaN(x) || math.IsInf(x, 0) || math.IsNaN(y) || math.IsInf(y, 0) {
 		return math.NaN(), math.NaN(), fmt.Errorf("proj: eqc Inverse 输入非有限 (%v,%v)", x, y)
 	}
-	lam := x / p.rc
+	lam := (x - p.x0) / p.rc
 	lon = normLonDeg(p.lon0 + lam*rad2deg)
 	if p.sphere {
-		return lon, (y/p.a + p.phi0) * rad2deg, nil
+		return lon, ((y-p.y0)/p.a + p.phi0) * rad2deg, nil
 	}
 	// μ'(en-scaled 归一弧)→ φ
-	mu := (y/p.a + p.m0) / p.en0
+	mu := ((y-p.y0)/p.a + p.m0) / p.en0
 	return lon, mlfnInverse(mu, p.Finv) * rad2deg, nil
 }
 

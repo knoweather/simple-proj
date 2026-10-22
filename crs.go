@@ -53,13 +53,80 @@ var angularKeys = map[string]bool{
 	"lat_0": true, "lat_1": true, "lat_2": true, "lat_ts": true, "lon_0": true,
 }
 
-// knownStringKeys 识别但非数值的参数。ellps/units/proj 由 Parse 直接消费;
-// sweep/datum/towgs84 与布尔旗标(no_defs 等)存 UnknownParams(B 的适配层经
-// paramString/paramFloat 取用,见 proj.go / PROGRESS-A 决策 D1)。
-// datum/towgs84 语义(基准变换)在 v0 明确出界(DESIGN §1.3),只保留不生效。
-var knownStringKeys = map[string]bool{
-	"proj": true, "ellps": true, "units": true,
-	"sweep": true, "datum": true, "towgs84": true, "no_defs": true,
+// unsupportedParamReason 本库「认识语义但没实现」的参数 → Parse 直接报错。
+//
+// 判据不是「我们认不认识这个键」,而是「忽略它会不会让结果算错」:
+//   - +pm/+axis/+to_meter/+nadgrids/+towgs84(非零)/+datum(非 WGS84)/+R_* 族/
+//     +geoc/+over/+geoidgrids 在 PROJ 里都会改变输出,静默丢弃 = 悄悄算错,故拒收;
+//   - +sweep 只在 geos 有意义,其他投影下 PROJ 同样忽略,不会改变输出,故不在此表
+//     (仍由 geos 的适配层消费)。
+//
+// 键一律小写规范形(Parse 已把键统一小写,故 +R_A → r_a)。
+var unsupportedParamReason = map[string]string{
+	"pm":         "本初子午线偏移",
+	"axis":       "轴序重排(axis order)",
+	"to_meter":   "自定义单位换算",
+	"nadgrids":   "NTv2/HARN 网格基准变换",
+	"geoidgrids": "大地水准面网格",
+	"geoc":       "地心纬度",
+	"over":       "经度不归约(over-range)",
+	"vunits":     "垂直单位",
+	"vto_meter":  "垂直单位换算",
+	"r_a":        "authalic 半径",
+	"r_v":        "等体积半径",
+	"r_g":        "几何平均半径",
+	"r_h":        "调和平均半径",
+	"r_lat_a":    "authalic 纬度半径",
+	"r_lat_g":    "几何纬度半径",
+	"towgs84":    "Helmert 7 参基准变换",
+	"datum":      "基准(datum)定义",
+	"init":       "+init= 语法(PROJ 6 起已移除)",
+	"defs":       "proj 定义文件",
+}
+
+// benignNoopKeys 接受但确实不影响结果的键(PROJ 变换语境下的无操作)。
+var benignNoopKeys = map[string]bool{
+	"no_defs": true, // proj4 遗留:不读 proj_defs 文件
+	"type":    true, // pyproj/PROJ6+ 的 +type=crs,变换语境无操作
+	"wktext":  true, // 由 WKT 导入时留下的旗标
+}
+
+// isNoopParamValue 判断「有语义的参数」取到的是否恰好是恒等值:
+// +nadgrids=@null(空网格)、+towgs84=0,0,0(零平移)、+datum=WGS84(即本库默认)。
+// 这三种在 PROJ 里等于不做变换,可以安全放行。
+func isNoopParamValue(key, val string) bool {
+	v := strings.TrimSpace(val)
+	switch key {
+	case "nadgrids":
+		return v == "@null"
+	case "datum":
+		return strings.EqualFold(v, "WGS84") || strings.EqualFold(v, "WGS_1984")
+	case "towgs84":
+		fields := strings.Split(v, ",")
+		if len(fields) != 3 && len(fields) != 7 {
+			return false
+		}
+		for _, f := range fields {
+			n, err := strconv.ParseFloat(strings.TrimSpace(f), 64)
+			if err != nil || n != 0 {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// rejectUnsupportedParam 对「未实现语义」的键给出可执行的报错文案。
+func rejectUnsupportedParam(key, val string) error {
+	reason := unsupportedParamReason[key]
+	if key == "init" {
+		return fmt.Errorf("proj: 不支持 +init=%s:%s;请改用 \"EPSG:<码>\" 或等价的 +proj 串", val, reason)
+	}
+	if val == "" {
+		return fmt.Errorf("proj: 不支持旗标 +%s(%s);静默忽略会让结果算错,本库选择报错", key, reason)
+	}
+	return fmt.Errorf("proj: 不支持参数 +%s=%s(%s);静默忽略会让结果算错,本库选择报错", key, val, reason)
 }
 
 // specialCodes 特例码 → 规范 proj 串(DESIGN §1.1:EPSG 识别只做少量特例)。
@@ -81,8 +148,11 @@ var specialCodeOrder = []int{4326, 4269, 3857, 900913}
 //   - 键拼写容错(lat1→lat_1、k/k0→k_0、latts→lat_ts、r→R;键统一小写);
 //   - 度数参数支持 "+lat_0=1.57r" 弧度后缀;
 //   - 默认值填补: lat_0/lon_0/x_0/y_0 = 0、k_0 = 1(其余投影专属参数由 impl 处理);
-//   - 未知 +key 不报错,原样进 UnknownParams;非数值的已识别键(sweep/datum/
-//     towgs84/no_defs)同样存 UnknownParams(决策 D1);
+//   - 未知 +key 不报错,原样进 UnknownParams;**已知语义但未实现**的键
+//     (pm/axis/to_meter/nadgrids/towgs84≠0/datum≠WGS84/R_* 族/geoc/over/
+//     geoidgrids/init 等)直接报错——静默忽略会让结果算错(见
+//     unsupportedParamReason);恒等值(nadgrids=@null、towgs84=0,0,0、
+//     datum=WGS84)与 no_defs/type/wktext 放行;
 //   - 椭球键收敛进数值表由 ellipsoid.go 组合推导,发现矛盾即报错;
 //   - +units 只认 "m"(只认米,DESIGN §1.1);
 //   - 未知 +proj 报错。
@@ -137,6 +207,9 @@ func parseProjString(s string) (*CRS, error) {
 			if knownNumericKeys[key] {
 				return nil, fmt.Errorf("proj: 数值参数 +%s 缺值", key)
 			}
+			if _, bad := unsupportedParamReason[key]; bad {
+				return nil, rejectUnsupportedParam(key, "")
+			}
 			crs.UnknownParams[key] = "" // no_defs / 未知旗标
 			continue
 		}
@@ -163,7 +236,14 @@ func parseProjString(s string) (*CRS, error) {
 			}
 			crs.Params[key] = num
 		default:
-			// sweep / datum / towgs84 / 未知:字符串原样保留(决策 D1)
+			// 未实现语义的键 fail-loud;白名单/未知键原样保留(决策 D1)。
+			if _, bad := unsupportedParamReason[key]; bad {
+				if isNoopParamValue(key, val) {
+					crs.UnknownParams[key] = val
+					continue
+				}
+				return nil, rejectUnsupportedParam(key, val)
+			}
 			crs.UnknownParams[key] = val
 		}
 	}

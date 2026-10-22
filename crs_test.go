@@ -217,12 +217,65 @@ func TestParseSweepStorage(t *testing.T) {
 }
 
 func TestParseUnknownParams(t *testing.T) {
-	c, err := Parse("+proj=geos +wktext +towgs84=123,456,789 +ellps=WGS84")
+	// 真未知键(PROJ 也不认识)→ 宽容保留,便于未来扩展。
+	c, err := Parse("+proj=geos +wktext +my_future_flag=42 +ellps=WGS84")
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	if c.UnknownParams["wktext"] != "" || c.UnknownParams["towgs84"] != "123,456,789" {
+	if c.UnknownParams["wktext"] != "" || c.UnknownParams["my_future_flag"] != "42" {
 		t.Errorf("未知参数应原样保留: %#v", c.UnknownParams)
+	}
+}
+
+// TestParseRejectsUnsupportedSemantics 有语义但未实现的键必须 fail-loud:
+// 静默忽略 +pm/+towgs84/+to_meter 之类会让坐标算错却不报错(本次改造的核心)。
+func TestParseRejectsUnsupportedSemantics(t *testing.T) {
+	cases := []string{
+		"+proj=merc +pm=paris +ellps=WGS84",              // 本初子午线
+		"+proj=merc +pm=paris",                           // 缺值同罪
+		"+proj=merc +to_meter=0.3048 +ellps=WGS84",       // 单位换算
+		"+proj=merc +axis=neu +ellps=WGS84",              // 轴序
+		"+proj=merc +nadgrids=conus +ellps=WGS84",        // 网格基准
+		"+proj=merc +towgs84=1,2,3 +ellps=WGS84",         // Helmert 非零
+		"+proj=merc +towgs84=0,0,0,1,2,3,4 +ellps=WGS84", // 7 参非零
+		"+proj=longlat +datum=NAD27",                     // 需要基准变换
+		"+proj=merc +R_A +ellps=WGS84",                   // authalic 半径旗标
+		"+proj=merc +R_V +ellps=WGS84",
+		"+proj=merc +over +ellps=WGS84", // over-range
+		"+proj=merc +geoc +ellps=WGS84", // 地心纬度
+		"+proj=merc +geoidgrids=egm96.gtx +ellps=WGS84",
+		"+init=epsg:4326", // +init 语法
+	}
+	for _, s := range cases {
+		if _, err := Parse(s); err == nil {
+			t.Errorf("Parse(%q) 应报错(有语义但未实现,不许静默忽略)", s)
+		}
+	}
+}
+
+// TestParseAcceptsNoopValues 恒等值放行:+nadgrids=@null、+towgs84=0,0,0、
+// +datum=WGS84、+type=crs 在 PROJ 里等于不做变换。
+func TestParseAcceptsNoopValues(t *testing.T) {
+	cases := []string{
+		"+proj=longlat +datum=WGS84",
+		"+proj=merc +nadgrids=@null +ellps=WGS84",
+		"+proj=merc +towgs84=0,0,0 +ellps=WGS84",
+		"+proj=merc +towgs84=0,0,0,0,0,0,0 +ellps=WGS84",
+		"+proj=longlat +ellps=WGS84 +type=crs",
+		"+proj=merc +a=6378137 +b=6378137 +no_defs",
+	}
+	for _, s := range cases {
+		if _, err := Parse(s); err != nil {
+			t.Errorf("Parse(%q) 应放行(恒等值): %v", s, err)
+		}
+	}
+	// +datum=WGS84 等价于默认椭球,数值结果须与 +ellps=WGS84 一致。
+	a, err := Parse("+proj=merc +datum=WGS84")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Ellipsoid.A != 6378137.0 {
+		t.Errorf("+datum=WGS84 应落到 WGS84 椭球, got a=%v", a.Ellipsoid.A)
 	}
 }
 
