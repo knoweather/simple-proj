@@ -196,6 +196,10 @@ func Parse(s string) (*CRS, error) {
 	if raw == "" {
 		return nil, fmt.Errorf("proj: 空 proj 字符串")
 	}
+	// WKT2/WKT1 自动分派(见 wkt.go)
+	if looksLikeWKT(raw) {
+		return ParseWKT(raw)
+	}
 
 	// EPSG 特例码 → 递归走规范 proj 串;projString 保留原码便于识别/往返。
 	if code, ok := parseEPSGCode(raw); ok {
