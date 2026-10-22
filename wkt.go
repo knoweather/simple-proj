@@ -489,21 +489,23 @@ func wktAngularDegrees(root wktNode) (float64, error) {
 		if !ok {
 			continue
 		}
-		if f, has := wktFirstNumber(u); has {
-			deg := f * 180 / math.Pi
-			if math.Abs(deg-1) > 1e-9 {
-				return 0, fmt.Errorf("proj(wkt): 角度单位为 %g 度/单位,本库输出固定为度,不支持", deg)
-			}
-		}
+		// 走 wktAngularUnitToDeg 而不是自己乘 180/π:那里有「名字是 degree 就返回
+		// 恰好 1」的短路,否则 0.0174532925199433 会算出 1.0000000000000002,
+		// 把 lon_0=180 顶成 180.00000000000003,eqc 在 ±180 边界直接翻号。
+		return wktAngularUnitToDeg(u)
 	}
 	return 1, nil
 }
 
-// wktAngularUnitToDeg 角度单位 → 每单位多少度。
+// wktAngularUnitToDeg 角度单位 → 每单位多少度(gon/rad 等也照算)。
 //
 // 度必须走名字短路:WKT 里的系数是 0.0174532925199433(π/180 的 17 位舍入),
 // 乘 180/π 得 1.0000000000000002,会把 lon_0=180 变成 180.00000000000003,
 // 于是 Δλ 越过 ±180 边界、eqc 的 x 直接翻号。
+//
+// 注意:这里**不**限制必须是度 —— 投影参数可以用 gon/rad 表达(WKT2 允许),
+// 换算成度即可。只有「地理 CRS 本身」的角单位必须是度,因为本库 latlong 输出
+// 固定为度,那条限制在 crsFromWKTGeog 里单独判。
 func wktAngularUnitToDeg(u wktNode) (float64, error) {
 	if name, ok := wktFirstString(u); ok {
 		n := strings.ToLower(strings.TrimSpace(name))
@@ -520,7 +522,7 @@ func wktAngularUnitToDeg(u wktNode) (float64, error) {
 	if math.Abs(deg-1) <= 1e-12 {
 		return 1, nil
 	}
-	return 0, fmt.Errorf("proj(wkt): 角度单位换算为 %g 度/单位,本库输出固定为度,不支持", deg)
+	return deg, nil
 }
 
 // crsFromWKTGeog GEOGCRS/GEOGCS → +proj=latlong。
@@ -532,9 +534,13 @@ func crsFromWKTGeog(root wktNode) (*CRS, error) {
 	if !ok {
 		return nil, fmt.Errorf("proj(wkt): 地理 CRS 里找不到 ELLIPSOID/SPHEROID")
 	}
-	// 角度单位只支持度(本库 latlong 输出固定为度)
-	if _, err := wktAngularDegrees(root); err != nil {
+	// 地理 CRS 的角单位必须是度(本库 latlong 输出固定为度)
+	deg, err := wktAngularDegrees(root)
+	if err != nil {
 		return nil, err
+	}
+	if math.Abs(deg-1) > 1e-12 {
+		return nil, fmt.Errorf("proj(wkt): 地理 CRS 的角度单位为 %g 度/单位,本库 latlong 输出固定为度,不支持", deg)
 	}
 	return Parse("+proj=latlong " + wktEllipsoidTokens(a, rf))
 }
@@ -596,13 +602,32 @@ func crsFromWKTProj(root wktNode) (*CRS, error) {
 		if !ok {
 			return nil, fmt.Errorf("proj(wkt): 参数 %q 没有数值", pname)
 		}
-		if wktIsAngularKey(key) {
-			params[key] = val * angularDeg
-		} else if key == "k_0" {
-			params[key] = val
-		} else {
-			// 长度参数(WKT 里用 CS 单位表达,本库内核按米)
-			params[key] = val * linearFactor
+		// 单位优先级:PARAMETER 自带的 ANGLEUNIT/LENGTHUNIT > CS 的单位。
+		// WKT2 允许混用(例如 CS 用英尺、某个 false easting 却写成米),只按
+		// 全局单位换算会算错。
+		switch {
+		case wktIsAngularKey(key):
+			deg := angularDeg
+			if u, ok := wktDirect(pn, "ANGLEUNIT"); ok {
+				d, err := wktAngularUnitToDeg(u)
+				if err != nil {
+					return nil, fmt.Errorf("proj(wkt): 参数 %q: %w", pname, err)
+				}
+				deg = d
+			}
+			params[key] = val * deg
+		case key == "k_0":
+			params[key] = val // 无量纲(SCALEUNIT 忽略)
+		default:
+			f := linearFactor
+			if u, ok := wktDirect(pn, "LENGTHUNIT"); ok {
+				if v, has := wktFirstNumber(u); has && v > 0 {
+					f = v
+				} else {
+					return nil, fmt.Errorf("proj(wkt): 参数 %q 的 LENGTHUNIT 缺换算系数", pname)
+				}
+			}
+			params[key] = val * f
 		}
 	}
 

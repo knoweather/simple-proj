@@ -178,16 +178,16 @@ func isWGS84Aligned(el Ellipsoid) bool {
 func (t *Transformer) From() *CRS { return t.from }
 func (t *Transformer) To() *CRS   { return t.to }
 
-// wgs84Ellipsoid 基准变换的中转椭球。
-var wgs84Ellipsoid = Ellipsoid{
-	A: 6378137.0,
-	B: 6378137.0 * (1 - 1/298.257223563),
-	F: 1 / 298.257223563,
-}
+// wgs84Ellipsoid 基准变换的中转椭球(WGS84,ES/E/Sphere 由 newEllipsoidFromRF 统一推)。
+// 手写字段再在 init 里补 ES 容易漏,直接走构造器并 panic —— 内置常量不该失败。
+var wgs84Ellipsoid = mustEllipsoid(6378137.0, 298.257223563)
 
-func init() {
-	wgs84Ellipsoid.ES = 1 - (wgs84Ellipsoid.B/wgs84Ellipsoid.A)*(wgs84Ellipsoid.B/wgs84Ellipsoid.A)
-	wgs84Ellipsoid.E = math.Sqrt(wgs84Ellipsoid.ES)
+func mustEllipsoid(a, rf float64) Ellipsoid {
+	e, err := newEllipsoidFromRF(a, rf)
+	if err != nil {
+		panic("proj: 内置 WGS84 椭球构造失败: " + err.Error())
+	}
+	return e
 }
 
 // Transform 源坐标 → 目标坐标(单位与轴序见文件头)。

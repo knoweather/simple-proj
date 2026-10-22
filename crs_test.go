@@ -270,6 +270,17 @@ func TestTowgs84NeedsTransformer(t *testing.T) {
 			t.Errorf("%q: 单投影带 towgs84 应报错", s)
 		}
 	}
+	// 带 towgs84 的 CRS 不能被特征回识别成 WGS84 系的码(差一个基准)
+	{
+		c, err := Parse("+proj=longlat +ellps=WGS84 +towgs84=1,2,3")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := c.EPSG(); got != 0 {
+			t.Errorf("带 towgs84 的 CRS 的 EPSG() 应为 0, got %d", got)
+		}
+	}
+
 	// 全零 towgs84 = 无变换,单投影照常可用
 	c, err := Parse("+proj=merc +towgs84=0,0,0 +ellps=WGS84")
 	if err != nil {
@@ -290,6 +301,9 @@ func TestParseRejectsBareFlags(t *testing.T) {
 		"+proj=merc +ellps",
 		"+proj=merc +ellps=WGS84 +units",
 		"+proj=merc +towgs84 +ellps=WGS84",
+		"+proj=merc +ellps=",
+		"+proj=merc +units=",
+		"+proj=merc +towgs84=",
 	} {
 		if _, err := Parse(s); err == nil {
 			t.Errorf("Parse(%q) 应报错(裸旗标缺值)", s)

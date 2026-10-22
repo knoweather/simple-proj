@@ -304,6 +304,9 @@ func parseProjString(s string) (*CRS, error) {
 			}
 			crs.Proj = canonical
 		case key == "ellps":
+			if strings.TrimSpace(val) == "" {
+				return nil, fmt.Errorf("proj: +ellps= 缺椭球名(PROJ 同样报错)")
+			}
 			ellpsName = strings.TrimSpace(val)
 		case key == "units":
 			name := strings.ToLower(strings.TrimSpace(val))
@@ -461,6 +464,12 @@ func (c *CRS) EPSG() int {
 		if _, found := utmEPSGString(code); found {
 			return code
 		}
+	}
+	// 带 +towgs84 的 CRS 与同名 WGS84 系 CRS 不是同一个东西(差一个基准),
+	// 特征比对必须让路,否则 "+proj=longlat +ellps=WGS84 +towgs84=1,2,3" 会被
+	// 认成 EPSG:4326。
+	if hasTowgs84(c) {
+		return 0
 	}
 	// 特征比对(容忍参数缺失但语义等同)。非米单位下坐标数值不同,
 	// 不能凭几何特征认成 4326/3857 之类的米制码(latlong 输出是度,不受影响)。

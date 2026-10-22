@@ -307,6 +307,23 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
   GEODCRS 形式的 WKT、`+units=km` 叠加 utm、WKT 前后空白、Info() 的单位显示。
   末态:全量测试绿 / vet 0 / gofmt 干净 / 覆盖率 **92.2%**。
 
+
+- 2026-10-22 **[细查] 第三轮(用户:"仔细检查")** —— 又逮到 4 处,全是边界/冷路径:
+  1. **`+ellps=`(空值)静默回落 WGS84**(PROJ 报错)。已拒收;顺带补 `+units=`/
+     `+towgs84=` 空值用例(那两个本来就报错,补测锁住)。
+  2. **`EPSG()` 把带 `+towgs84` 的 CRS 认成 4326**:特征比对只看椭球,没看基准。
+     带 towgs84 时直接返回 0。
+  3. **WKT 逐参数单位**:WKT2 允许每个 PARAMETER 自带 ANGLEUNIT/LENGTHUNIT,且
+     可与 CS 不同(如 CS 用米、false easting 写美国测量英尺;或中央经线用 gon)。
+     原实现只按全局单位换算 → 算错。改为「PARAMETER 自带单位 > CS 单位」,
+     并用 pyproj 对同两份 WKT 取参照值锁死。为此把 `wktAngularUnitToDeg` 放开
+     到任意角单位(只有「地理 CRS 本身」仍要求度)。
+  4. `wgs84Ellipsoid` 从「手写字段 + init 补 ES」改为走 `newEllipsoidFromRF`
+     (init 里 panic 兜底)。改的时候自己踩了一次 `rf` 与 `f` 混用,被 init panic
+     当场逮住。
+  另:WKT 参照点从 5 个扩到 12 个(每方言 336 点比对);补 `TestTransformConcurrent`
+  并发冒烟。末态:全量绿 / vet 0 / gofmt 干净 / 覆盖率 **92.3%** / 交叉编译过。
+
 ## HANDOVER(下个会话可直接接)
 
 1. **B 轨全部结案**:五投影(stere/laea/lcc/merc/tmerc)+ geolib + golden 生成器 +

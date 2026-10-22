@@ -65,7 +65,11 @@ HAND_WKT2 = {
 
 # Forward probes (lon, lat) — one per projection region, chosen to stay inside
 # every domain (aeqd/stere/lcc/geos all fine at these).
-PROBES = [(10.0, 20.0), (100.0, 30.0), (-95.0, 40.0), (140.0, 10.0), (0.0, 0.0)]
+PROBES = [
+    (10.0, 20.0), (100.0, 30.0), (-95.0, 40.0), (140.0, 10.0), (0.0, 0.0),
+    (-170.0, 45.0), (45.0, 80.0), (179.9, -30.0), (-60.0, -45.0),
+    (120.0, -60.0), (30.0, 60.0), (150.0, 0.0),
+]
 
 
 def main():

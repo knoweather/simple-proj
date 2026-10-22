@@ -14,6 +14,7 @@ package proj
 // 6.3e-9 / 5.0e-9 度,本库 6.3e-9 / 9.0e-9 度),所以往返门取 1e-8 度。
 
 import (
+	"fmt"
 	"math"
 	"testing"
 )
@@ -171,6 +172,47 @@ func TestTransformBatch(t *testing.T) {
 	}
 	if _, err := tr.TransformBatch([]float64{1, 2, 3}); err == nil {
 		t.Error("奇数长度应报错")
+	}
+}
+
+// TestTransformConcurrent Transformer 不可变,多个 goroutine 共享同一实例
+// 必须与串行结果逐位一致(与 TestThreadSafety 同口径;-race 待 linux CI)。
+func TestTransformConcurrent(t *testing.T) {
+	tr := mustTransformer(t, "EPSG:4326", dhdn7)
+	pts := [][2]float64{{13.4, 52.5}, {0, 0}, {-60, -45}, {140, 10}}
+	type ref struct{ x, y float64 }
+	refs := make([]ref, len(pts))
+	for i, p := range pts {
+		x, y, err := tr.Transform(p[0], p[1])
+		if err != nil {
+			t.Fatalf("Transform: %v", err)
+		}
+		refs[i] = ref{x, y}
+	}
+	const workers = 8
+	errs := make(chan error, workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			for i := 0; i < 200; i++ {
+				for j, p := range pts {
+					x, y, err := tr.Transform(p[0], p[1])
+					if err != nil {
+						errs <- err
+						return
+					}
+					if x != refs[j].x || y != refs[j].y {
+						errs <- fmt.Errorf("并发结果漂移 @%d", j)
+						return
+					}
+				}
+			}
+			errs <- nil
+		}()
+	}
+	for w := 0; w < workers; w++ {
+		if err := <-errs; err != nil {
+			t.Fatalf("并发: %v", err)
+		}
 	}
 }
 

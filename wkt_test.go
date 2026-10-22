@@ -151,6 +151,54 @@ func TestWKTRejections(t *testing.T) {
 	}
 }
 
+// TestWKTPerParameterUnits WKT2 允许每个 PARAMETER 自带单位,且可以与 CS 不同。
+// 只按 CS 单位换算会算错 —— 参照值由 pyproj 解析同一份 WKT 得到(2026-10-22):
+// 两种写法都应给出 (500000, 3318785.3525812062)。
+func TestWKTPerParameterUnits(t *testing.T) {
+	const wantX, wantY = 500000.0, 3318785.3525812062
+	cases := map[string]string{
+		// false easting 用美国测量英尺(1640416.6666666667 ft = 500000 m),CS 是米
+		"easting-in-us-ft": `PROJCRS["mixed-ft",BASEGEOGCRS["WGS 84",DATUM["WGS 1984",` +
+			`ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]]],` +
+			`CONVERSION["c",METHOD["Transverse Mercator"],` +
+			`PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433]],` +
+			`PARAMETER["Longitude of natural origin",117,ANGLEUNIT["degree",0.0174532925199433]],` +
+			`PARAMETER["Scale factor at natural origin",0.9996,SCALEUNIT["unity",1]],` +
+			`PARAMETER["False easting",1640416.6666666667,LENGTHUNIT["US survey foot",0.304800609601219]],` +
+			`PARAMETER["False northing",0,LENGTHUNIT["metre",1]]],` +
+			`CS[Cartesian,2],AXIS["E",east,ORDER[1],LENGTHUNIT["metre",1]],` +
+			`AXIS["N",north,ORDER[2],LENGTHUNIT["metre",1]]]`,
+		// 中央经线用 gon(400 gon = 360 度;117 度 = 130 gon)
+		"lon-in-gon": `PROJCRS["mixed-gon",BASEGEOGCRS["WGS 84",DATUM["WGS 1984",` +
+			`ELLIPSOID["WGS 84",6378137,298.257223563,LENGTHUNIT["metre",1]]]],` +
+			`CONVERSION["c",METHOD["Transverse Mercator"],` +
+			`PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433]],` +
+			`PARAMETER["Longitude of natural origin",130,ANGLEUNIT["gon",0.015707963267948967]],` +
+			`PARAMETER["Scale factor at natural origin",0.9996,SCALEUNIT["unity",1]],` +
+			`PARAMETER["False easting",500000,LENGTHUNIT["metre",1]],` +
+			`PARAMETER["False northing",0,LENGTHUNIT["metre",1]]],` +
+			`CS[Cartesian,2],AXIS["E",east,ORDER[1],LENGTHUNIT["metre",1]],` +
+			`AXIS["N",north,ORDER[2],LENGTHUNIT["metre",1]]]`,
+	}
+	for name, wkt := range cases {
+		crs, err := Parse(wkt)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		p, err := crs.NewProjection()
+		if err != nil {
+			t.Fatalf("%s: NewProjection: %v", name, err)
+		}
+		x, y, err := p.Forward(117, 30)
+		if err != nil {
+			t.Fatalf("%s: Forward: %v", name, err)
+		}
+		if math.Abs(x-wantX) > 1e-6 || math.Abs(y-wantY) > 1e-6 {
+			t.Errorf("%s: (117,30) → (%.6f, %.6f), want (%.6f, %.6f)", name, x, y, wantX, wantY)
+		}
+	}
+}
+
 // TestWKTGeographic 地理 CRS:WKT → latlong(度),EPSG:4326 走 ID 快通道。
 func TestWKTGeographic(t *testing.T) {
 	crs, err := Parse(`GEOGCRS["WGS 84",DATUM["World Geodetic System 1984",ELLIPSOID["WGS 84",6378137,298.257223563]],CS[ellipsoidal,2],AXIS["latitude",north],AXIS["longitude",east],ANGLEUNIT["degree",0.0174532925199433]]`)
