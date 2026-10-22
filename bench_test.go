@@ -166,3 +166,14 @@ func BenchmarkForwardBatchAeqd(b *testing.B) {
 func BenchmarkInverseBatchAeqd(b *testing.B) {
 	benchInverseBatch(b, "+proj=aeqd +lat_0=45 +lon_0=10 +ellps=WGS84", "")
 }
+
+// ---- ob_tran(旋转极点)-----------------------------------------------------
+// 每点只有 4 个 sin/cos + 1 个 asin + 1 个 atan2,应与 latlong 同量级;
+// 批量口径同其他投影(输入是旋转系经纬,输出是未旋转系经纬)。
+
+func BenchmarkForwardBatchObTran(b *testing.B) {
+	benchForwardBatch(b, "+proj=ob_tran +o_proj=longlat +o_lat_p=39.25 +lon_0=18 +ellps=WGS84", "")
+}
+func BenchmarkInverseBatchObTran(b *testing.B) {
+	benchInverseBatch(b, "+proj=ob_tran +o_proj=longlat +o_lat_p=39.25 +lon_0=18 +ellps=WGS84", "")
+}

@@ -71,7 +71,7 @@ func (c *CRS) newProjection(allowDatum bool) (Projection, error) {
 	if err != nil {
 		return nil, err
 	}
-	if f, has := paramFloat(c, "to_meter", 1); has && f != 1 && c.Proj != "latlong" {
+	if f, has := paramFloat(c, "to_meter", 1); has && f != 1 && !c.angularOutput() {
 		return &unitScaled{Projection: p, toMeter: f}, nil
 	}
 	return p, nil

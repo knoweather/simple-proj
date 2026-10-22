@@ -422,6 +422,41 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
     22 个 case × 312 点 ≈ 6.9k 点,forward 最大 2.15e-5 m(stere,已知特性)、
     inverse 最大 2.8e-12 度,全绿,无新问题。
 
+
+- 2026-10-22 **[ob_tran 落地] 补上唯一的 P0 缺口(用户:"需要")**。
+  `impl_obtran.go`(约 150 行)+ 接入 Parse/单位层/Info + 对拍。
+  - **口径来源**:网络抓不到 ob_tran.cpp(curl/urllib 都被 TLS 拦),于是拿
+    pyproj 反推并用 7 组参数 × 192 点验证。最终公式(旋转是绕 Y 轴的正交变换,
+    逆变换即其转置):
+    ```
+    λ' = λr − o_lon_p
+    sin φ = sin φp·sin φ' + cos φp·cos φ'·cos λ'
+    λ     = lon_0 + atan2(cos φ'·sin λ', sin φp·cos φ'·cos λ' − cos φp·sin φ')
+    ```
+    踩坑:atan2 的分母符号与 CF/教科书相反 —— PROJ 的约定下**旋转北极落到
+    (lon_0+180, o_lat_p)**。照抄教科书写法会让整幅网格沿经线错 180°(静默)。
+  - **GRIB2 模板 3.1 的换算**(写进 README 与测试注释):模板给的南极点
+    (LaSP, LoSP) → `+o_lat_p=-LaSP`、`+lon_0=LoSP`(**不是** LoSP+180)。
+    用 ECMWF 的 (39.25N, 162W) 锁死:南极点 (−39.25, 18) → 旋转北极必须
+    正好落在 (−162, 39.25)。这条同时**关闭**了上一轮记的 DESIGN §5 错误:
+    3.1 不该映射成 `+proj=eqc`,下游 simple-sat 的 crsFromGridDef 现在有正确落点。
+  - **两处有意收紧**(README「已知差异」第 3 条):
+    ① PROJ 对 `+o_lat_p=95` 照算(实测给出 lat=−5 的无意义结果),本库报错;
+    ② PROJ 允许 `+o_proj=<任意投影>`,本库只支持 `longlat` —— 实测
+       `+o_proj=merc +lon_0=100` 时内层中央经线是 0(即 lon_0 被旋转吃掉),
+       其余参数归属要逐项核对,不猜。遇到直接报错并指向 NewTransformer。
+    另:PROJ 的 `+o_alpha`/`+o_lat_c`/`+o_lon_c`/`+o_lon_w`/`+o_lat_1..2`/
+    `+o_lon_1..2` 那套"中心点+方位"参数化未实现,Parse 阶段点名拒收。
+  - **单位层**:ob_tran 输出是度,`+units` 不生效(pyproj 实测)。新增
+    `CRS.angularOutput()`,让 `NewProjection` 的单位装饰器、`Units()`、`EPSG()`
+    三处统一按"角度输出"处理;`IsGeographic()` 仍为 false(旋转系不是地理坐标系)。
+  - **对拍**:`xcheck/gen_obtran.py` → `obtran_ref.json`,7 组(含 np30、
+    o_lon_p=40、lon_0=170、ECMWF、南半球、o_lat_p=90 退化、斜轴 55.5°)×
+    (83 正解 + 109 反解),正反解最大偏差 **1.3e-13 度**;另有全域网格往返
+    (25×35 点)与批量一致性。基准 1e6 点 ~87 ms(在 100 ms 预算内)。
+  - 测试 162 → 172,覆盖率 **98.6%** 持平。剩余 P0 缺口清零,下一档是 P1
+    (aea/eqdc、omerc/somerc、ortho/nsper、sinu/moll/robin/igh/eck*)。
+
 ## HANDOVER(下个会话可直接接)
 
 1. **B 轨全部结案**:五投影(stere/laea/lcc/merc/tmerc)+ geolib + golden 生成器 +

@@ -36,6 +36,7 @@ var knownProj = map[string]string{
 	"tmerc":   "tmerc",
 	"aeqd":    "aeqd",
 	"utm":     "utm",
+	"ob_tran": "ob_tran",
 }
 
 // knownNumericKeys 识别的数值参数(收纳进 CRS.Params)。
@@ -44,6 +45,8 @@ var knownNumericKeys = map[string]bool{
 	"a": true, "b": true, "es": true, "f": true, "rf": true, "R": true,
 	"h": true, "k_0": true, "lat_0": true, "lat_1": true, "lat_2": true,
 	"lat_ts": true, "lon_0": true, "x_0": true, "y_0": true,
+	// ob_tran 的旋转参数(见 impl_obtran.go);o_proj 是字符串,走 UnknownParams
+	"o_lat_p": true, "o_lon_p": true,
 	"zone":     true, // utm 带号 1..60
 	"to_meter": true, // 自定义单位:每单位多少米
 }
@@ -85,6 +88,8 @@ var paramAliases = map[string]string{
 // angularKeys 度数参数(支持 PROJ 的 "1.570796r" 后缀 → 弧度值)。
 var angularKeys = map[string]bool{
 	"lat_0": true, "lat_1": true, "lat_2": true, "lat_ts": true, "lon_0": true,
+	// ob_tran 的旋转参数也是角度(见 impl_obtran.go)
+	"o_lat_p": true, "o_lon_p": true,
 }
 
 // unsupportedParamReason 本库「认识语义但没实现」的参数 → Parse 直接报错。
@@ -118,6 +123,16 @@ var unsupportedParamReason = map[string]string{
 	"defs":       "proj 定义文件",
 	"approx":     "utm 的低阶近似路径(本库恒定走精确 etmerc)",
 	"guam":       "aeqd 的 Guam 变体(旧式区域投影)",
+	// ob_tran 的另一套参数化(中心点 + 方位)。本库只实现"极点 + 绕轴转角"
+	// 那一套(GRIB 用的就是它),这套会静默给出不同结果,故拒收。
+	"o_alpha": "ob_tran 的方位角参数化(本库只支持 +o_lat_p/+o_lon_p/+lon_0)",
+	"o_lat_c": "ob_tran 的中心点参数化(本库只支持 +o_lat_p/+o_lon_p/+lon_0)",
+	"o_lon_c": "ob_tran 的中心点参数化(本库只支持 +o_lat_p/+o_lon_p/+lon_0)",
+	"o_lon_w": "ob_tran 的西边界经度参数化(本库只支持 +o_lat_p/+o_lon_p/+lon_0)",
+	"o_lat_1": "ob_tran 的两点参数化(本库只支持 +o_lat_p/+o_lon_p/+lon_0)",
+	"o_lon_1": "ob_tran 的两点参数化(本库只支持 +o_lat_p/+o_lon_p/+lon_0)",
+	"o_lat_2": "ob_tran 的两点参数化(本库只支持 +o_lat_p/+o_lon_p/+lon_0)",
+	"o_lon_2": "ob_tran 的两点参数化(本库只支持 +o_lat_p/+o_lon_p/+lon_0)",
 }
 
 // isNoopParamValue 判断「有语义的参数」取到的是否恰好是恒等值:
@@ -433,7 +448,8 @@ func validateNumericParams(params map[string]float64) error {
 			return fmt.Errorf("proj: +h=%v 必须 > 0(geos 卫星高度)", h)
 		}
 	}
-	for _, key := range []string{"lat_0", "lat_ts", "lat_1", "lat_2"} {
+	// o_lat_p 是 ob_tran 的旋转极点纬度,与 lat_0 同域
+	for _, key := range []string{"lat_0", "lat_ts", "lat_1", "lat_2", "o_lat_p"} {
 		if v, ok := params[key]; ok && math.Abs(v) > 90 {
 			return fmt.Errorf("proj: +%s=%v 出界 [-90,90]", key, v)
 		}
@@ -473,7 +489,7 @@ func (c *CRS) EPSG() int {
 	}
 	// 特征比对(容忍参数缺失但语义等同)。非米单位下坐标数值不同,
 	// 不能凭几何特征认成 4326/3857 之类的米制码(latlong 输出是度,不受影响)。
-	if f, ok := paramFloat(c, "to_meter", 1); ok && f != 1 && c.Proj != "latlong" {
+	if f, ok := paramFloat(c, "to_meter", 1); ok && f != 1 && !c.angularOutput() {
 		return 0
 	}
 	if _, isLatlong := knownProj[c.Proj]; isLatlong && c.Proj == "latlong" {
@@ -527,7 +543,27 @@ func near(a, b float64) bool {
 // 另外 pyproj 有 CRS.equals(),本库一直没有,这里补上(结构比较,不查数据库)。
 
 // IsGeographic 是否地理坐标系(本库只有 latlong 一种,收发都是度)。
+// ob_tran 的输出虽然也是度,但那是**旋转系**经纬,不算地理坐标系 ——
+// 判断"输出是不是角度"请用 Units()=="degree"。
 func (c *CRS) IsGeographic() bool { return c != nil && c.Proj == "latlong" }
+
+// angularOutput 该 CRS 的输出是否为**角度(度)**而不是米。
+//
+// latlong 恒为度;ob_tran 在 o_proj=longlat 时输出也是旋转系经纬(度)——
+// PROJ 同样不给它套 +units(pyproj 实测 +units=km 对 ob_tran+longlat 无影响)。
+func (c *CRS) angularOutput() bool {
+	if c == nil {
+		return false
+	}
+	switch c.Proj {
+	case "latlong":
+		return true
+	case "ob_tran":
+		inner := strings.ToLower(strings.TrimSpace(paramString(c, "o_proj", "")))
+		return inner == "longlat" || inner == "latlong"
+	}
+	return false
+}
 
 // Units 返回坐标单位(机器可读):
 //   - 地理 CRS 恒为 "degree"(输出度);
@@ -539,7 +575,8 @@ func (c *CRS) Units() string {
 	if c == nil {
 		return ""
 	}
-	if c.IsGeographic() {
+	// 输出是角度的 CRS:latlong,以及 ob_tran + o_proj=longlat(旋转经纬)。
+	if c.angularOutput() {
 		return "degree"
 	}
 	if name := paramString(c, "units", ""); name != "" {

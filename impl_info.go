@@ -118,6 +118,13 @@ var projInfoTable = map[string]projInfoEntry{
 		domain:      "+zone 须为 1..60;域规则同 tmerc(±81.7° 中央子午线);+south 加 1e7 假北移",
 		accuracy:    "sweep forward ≤ 3.7e-9 m,inverse ≤ 1.7e-13 度(等价 tmerc)",
 	},
+	"ob_tran": {
+		description: "Oblique Transverse / 旋转极点(GRIB2 模板 3.1 的旋转经纬网格)",
+		hasInverse:  true,
+		units:       "度 → 度(旋转系经纬 → 未旋转系经纬)",
+		domain:      "+o_lat_p 必需且 |o_lat_p| ≤ 90;+o_proj 只支持 longlat;全域可解(旋转是双射)",
+		accuracy:    "xcheck/obtran_ref.json 7 组 × ~190 点:正反解均 ≤ 1.3e-13 度(pyproj 3.8.0)",
+	},
 }
 
 // Info 返回投影实例的元数据(goproj Info() 的对应物,C#14)。
@@ -136,8 +143,9 @@ func Info(p Projection) (*ProjectionInfo, error) {
 		return nil, fmt.Errorf("proj: Info: 未知投影 %q(表内应有尽有,此为防御分支)", c.Proj)
 	}
 	// 单位字段跟着 CRS 实际配置走(+units/+to_meter 生效时不能还报「米」)。
+	// 输出是角度的 CRS(latlong、ob_tran+longlat)不受 +units 影响,保持表里的写法。
 	units := e.units
-	if c.Proj != "latlong" {
+	if !c.angularOutput() {
 		if f, has := paramFloat(c, "to_meter", 1); has && f != 1 {
 			if name := paramString(c, "units", ""); name != "" {
 				units = "度 → " + name

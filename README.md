@@ -4,7 +4,7 @@
 等经纬、等距圆柱、Geostationary 视图投影的正反变换。与 pyproj/PROJ 9.8 对拍
 （xcheck/golden_*.json），数值门槛：Forward ≤ 1e-6 m，Inverse ≤ 1e-9 度。
 
-> 状态：v0.2.0。10 个投影（+ aeqd/utm）+ 单位换算 + WKT2/WKT1 解析 +
+> 状态：v0.2.0。11 个投影（含 aeqd/utm/ob_tran）+ 单位换算 + WKT2/WKT1 解析 +
 > CRS→CRS 转换（`Transformer`，含 `+towgs84` 基准变换）+ Karney 大地线解。
 > 测试/对拍/交叉编译全绿，语句覆盖率 **98.6%**（余下 1.4% 全是"测不到"的防御
 > 分支，逐条记账在 PROGRESS-B）。后继 simple-sat 按本文「公共 API 契约」接入。
@@ -17,7 +17,7 @@ simple-proj 是 simple-grib / simple-sat 气象卫星数据栈里的**投影底�
 供重采样（resampling）和几何处理使用。
 
 - **为什么不用 pyproj**：pyproj 绑定 C 库（cgo），在纯 Go 服务/交叉编译场景
-  下是负担；本库只覆盖气象卫星实际用到的 10 个投影，行为与 PROJ 9.8 对齐。
+  下是负担；本库只覆盖气象卫星实际用到的 11 个投影，行为与 PROJ 9.8 对齐。
 - **怎么保证行为一致**：所有投影与 pyproj 3.8.0 / PROJ 9.8.1 双向对拍
   （33×33 网格 golden + 独立扩展 sweep 两套点集），数值门槛
   Forward ≤ 1e-6 m、Inverse ≤ 1e-9 度；差异以 pyproj 输出为准。
@@ -29,7 +29,7 @@ simple-proj 是 simple-grib / simple-sat 气象卫星数据栈里的**投影底�
 
 | 能力 | 状态 | 说明 |
 |---|---|---|
-| 10 个投影（latlong/eqc/geos/stere/laea/lcc/merc/tmerc/aeqd/utm + longlat 别名） | ✅ | 球体 + 椭球双路径 |
+| 11 个投影（latlong/eqc/geos/stere/laea/lcc/merc/tmerc/aeqd/utm/ob_tran + longlat 别名） | ✅ | 球体 + 椭球双路径 |
 | 大地线解（Karney 6 阶级数） | ✅ | `geodesic.go`；aeqd 斜轴用，对拍 pyproj ≤ 3.7e-9 m |
 | 单位换算 `+units` / `+to_meter` | ✅ | m/km/ft/us-ft/mi…（框架层换算） |
 | WKT2 / WKT1 解析 | ✅ | `ParseWKT`；翻译成等价 proj 串再入 `Parse` |
@@ -88,6 +88,17 @@ lon, lat, err := trBack.Transform(x, y)
 
 ```go
 crs, err := proj.Parse(wktText)          // PROJCRS[...] / PROJCS[...] / GEOGCRS[...]
+```
+
+**GRIB2 旋转经纬网格**（模板 3.1：`+proj=ob_tran`，输出仍是度）：
+
+```go
+// 模板 3.1 给的"南极点"(LaSP, LoSP) → +o_lat_p = -LaSP、+lon_0 = LoSP
+// 例：ECMWF 的 grid_north_pole = (39.25N, 162W) → 南极点 (-39.25, 18)
+crs, _ := proj.Parse("+proj=ob_tran +o_proj=longlat +o_lat_p=39.25 +lon_0=18 +ellps=WGS84")
+p, _ := crs.NewProjection()
+lon, lat, _ := p.Forward(0, 90)   // 旋转北极 → (-162, 39.25)，即上面那个极点
+rlon, rlat, _ := p.Inverse(120, 30) // 地理点 → 网格坐标
 ```
 
 **单位**（`+units=km` 等，输出按该单位，`x_0` 仍按米参与）：
@@ -172,6 +183,7 @@ wg.Wait()
 | `stere` / `laea` / `lcc` / `merc` / `tmerc` | B 轨投影 | ✓ | 见 PROGRESS-B |
 | `aeqd` | Azimuthal Equidistant（极轴 N/S、赤道、斜轴） | ✓ | 椭球斜轴走 Karney 大地线 |
 | `utm` | Universal Transverse Mercator | ✓ | `+zone=1..60`、`+south`；= tmerc + 固定参数 |
+| `ob_tran` | 旋转极点（Oblique Transverse） | ✓ | GRIB2 模板 3.1/3.3；`+o_proj=longlat` + `+o_lat_p`/`+o_lon_p`/`+lon_0` |
 
 参数语义（均与 pyproj 3.8.0 / PROJ 9.8.1 实测对齐）：
 
@@ -191,6 +203,7 @@ wg.Wait()
 | `tmerc` | PROJ 默认 auto -> Poder/Engsager 6 阶精确序列；`+k`/`+k0` 归一 k_0 | `\|Ce\|` ≤ 2.6234 rad（赤道约 ±81.7°）外 → ErrDomain |
 | `aeqd` | `+lat_0` 定方面（±90 极轴 / 0 赤道 / 其余斜轴）；`k_0` 忽略 | 球体：中心对跖点、极轴对侧极点 → ErrDomain；椭球全域可解 |
 | `utm` | `+zone` 必需（1..60）；`lon_0`/`x_0`/`y_0` 由 zone 覆盖；`+south` 加 1e7 假北移 | 同 tmerc |
+| `ob_tran` | `+o_lat_p` 必需（旋转极点纬度）；`+lon_0` 是极点经度；`+o_lon_p` 绕极轴转角；`+o_proj` 只支持 `longlat` | 全域可解（旋转是双射）；输出是**度**，`+units` 不生效 |
 
 ## 精度与对拍
 
@@ -222,6 +235,7 @@ wg.Wait()
 | aeqd_obl | 9.3e-9 m | 5.7e-14 度 | 椭球斜轴：大地线 |
 | utm / utm_south | ≤ 5.6e-9 m | ≤ 1.4e-13 度 | 等价 tmerc |
 | merc_km | 7.3e-12（km 单位） | 5.7e-14 度 | 单位换算层 |
+| ob_tran（7 组 × ~190 点） | ≤ 8.5e-14 度 | ≤ 1.3e-13 度 | 旋转是正交变换，见 `xcheck/obtran_ref.json` |
 
 大地线求解器本身（`geodesic.go`，`xcheck/geodesic_ref.json`：79 反解 + 69 正解，
 含近对跖与极区）：距离 **≤ 3.7e-9 m**、方位 ≤ 8.1e-13 度、正解位置 ≤ 8.5e-14 度。
@@ -315,7 +329,7 @@ GOOS=linux GOARCH=arm64 go build ./... # 交叉编译（无 cgo）
 
 **已支持**（v0.2.0）：
 
-- 10 个投影、球/椭球双路径、批量 API、`+units`/`+to_meter`；
+- 11 个投影、球/椭球双路径、批量 API、`+units`/`+to_meter`；
 - WKT2 / WKT1 子集解析（翻译成等价 proj 串，`String()` 仍只回 proj 串）；
 - CRS→CRS 转换 + `+towgs84` 的 3 参/7 参 Helmert（WGS84 中转）。
 
@@ -331,7 +345,7 @@ GOOS=linux GOARCH=arm64 go build ./... # 交叉编译（无 cgo）
 
 ## 与 pyproj 的已知差异
 
-本库以「与 pyproj 3.8.0 / PROJ 9.8.1 逐点对齐」为验收口径，下面三处是**有意保留**
+本库以「与 pyproj 3.8.0 / PROJ 9.8.1 逐点对齐」为验收口径，下面四处是**有意保留**
 的差异，都写在对应源码注释里：
 
 1. **aeqd 球面斜轴的刀刃点**：`(lat_0=45, lon_0=10)` 投 `(100,45)` 时，PROJ 的
@@ -340,7 +354,12 @@ GOOS=linux GOARCH=arm64 go build ./... # 交叉编译（无 cgo）
    用 `atan2(x, y)`，往返正确。
 2. **反向 Helmert 的求法**：PROJ 用「参数取负」近似（`s' = 1−ppm·1e-6`），本库
    解 `M·x = X'−T`。两者差 O((ppm+r)²)，DHDN 参数下 0.4 mm（≈4e-9 度）。
-3. **不支持的参数 fail-loud**：`+pm`/`+axis`/`+nadgrids`/`+datum`(非 WGS84)/
+3. **`ob_tran` 的两处收紧**：PROJ 对 `+o_lat_p=95`（极点纬度越界）照算并给出
+   无意义结果，本库报错；PROJ 允许 `+o_proj=<任意投影>`，本库只支持 `longlat`
+   —— 旋转后再套米制投影时，`+lon_0`/`+x_0`/`+lat_0` 在"旋转"与"内层"之间的
+   归属需要逐项核对（实测 `+o_proj=merc +lon_0=100` 时内层中央经线是 0），
+   本库不猜，遇到直接报错并指向 `NewTransformer`。
+4. **不支持的参数 fail-loud**：`+pm`/`+axis`/`+nadgrids`/`+datum`(非 WGS84)/
    `+R_A` 族/`+geoc`/`+over`/`+geoidgrids` 在 pyproj 里会被静默忽略或降级，
    本库在 `Parse` 阶段就报错 —— 静默忽略等于悄悄算错。恒等值
    （`+towgs84=0,0,0`、`+nadgrids=@null`、`+datum=WGS84`、`+type=crs`）照常放行。
@@ -357,12 +376,14 @@ GOOS=linux GOARCH=arm64 go build ./... # 交叉编译（无 cgo）
 | `geolib.go` | 球面/椭球公共数学（等角/等积纬等） | B |
 | `impl_stere.go` / `impl_laea.go` / `impl_lcc.go` / `impl_merc.go` / `impl_tmerc.go` | B 轨五投影 | B |
 | `impl_aeqd.go` / `impl_utm.go` | 方位等距、UTM | — |
+| `impl_obtran.go` / `impl_obtran_test.go` | 旋转极点（GRIB2 模板 3.1/3.3） | — |
 | `geodesic.go` / `geodesic_test.go` | Karney 大地线（aeqd 斜轴用） | — |
 | `transform.go` / `transform_test.go` | `Transformer`（CRS→CRS + Helmert） | — |
 | `wkt.go` / `wkt_test.go` | WKT2/WKT1 子集解析 | — |
 | `units_test.go` | `+units`/`+to_meter` 换算层 | — |
 | `xcheck/gen_golden.py` / `xcheck/gen_sweep.py` | golden / sweep 生成器 | B |
 | `xcheck/gen_geodesic.py` / `xcheck/gen_wkt.py` | 大地线 / WKT 参照生成器 | — |
+| `xcheck/gen_obtran.py` / `xcheck/obtran_ref.json` | 旋转极点参照（正反两向） | — |
 | `xcheck/golden_*.json` / `sweep_extra.json` | 对拍参照 | B |
 | `xcheck/xcheck_test.go` | A 轨消费端 | A |
 | `bench_test.go` / `bench_b_test.go` | 批量基准（A / B 轨） | A / B |
