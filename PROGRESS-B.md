@@ -396,6 +396,32 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
     ⑥ `CreateCrsToCrs` 里 `&area.area` 不判 nil。
   - 末态:测试 160 → 162,覆盖率仍 98.6%,全绿。
 
+
+- 2026-10-22 **[对照 PROJ 的功能盘点 + 大样本差分] 发现 DESIGN §5 两处 GRIB 模板映射写错**。
+  用户说"对比 proj 源码看看还缺什么,没问题就测一下"。先纠正前提:
+  `GolandProjects/proj-master` 不是 C 版 PROJ 源码,是 **go-spatial/proj**(PROJ 5 的
+  Go 移植,只做了 aea/aeqd/airy/august/eqc/etmerc/merc 七个),参考价值有限。
+  于是改用 pyproj 里的 **PROJ 9.8.1** 做基准,逐个试建 proj 串枚举出 ≥84 个投影名。
+  - 投影覆盖:本库 10 个 vs PROJ ≥84 个。按气象相关性排序的缺口见下(P0 只有一项)。
+  - **P0(会影响数据正确性)**:`ob_tran`(旋转极点)。GRIB2 模板 3.1/3.3 是旋转
+    经纬网格(ECMWF/ICON/区域模式常见),本库没有该投影,Parse 会报
+    "未知 +proj=ob_tran"。**更严重的是 DESIGN §5 把模板 3.1 映射成 `+proj=eqc`**
+    —— 旋转网格当普通经纬网格投出来会整体错位,而且是静默的。
+  - **DESIGN §5 第二处错**:模板 3.20 注释成 "(AE) 方位等距 → +proj=aeqd"。
+    WMO 表 3.1 里 **3.20 是极射赤面(polar stereographic)**,正确映射是
+    `+proj=stere +lat_0=±90 +lat_ts=LaD +lon_0=LoV`(正是 golden_stere 那组);
+    方位等距是 3.110。DESIGN 是冻结文档,不改,记在这里;下游 simple-sat 实现
+    crsFromGridDef 时按本条走。
+  - P1(常见但非必须):`aea`/`eqdc`(区域圆锥)、`omerc`/`somerc`、`ortho`/`nsper`
+    (极轨卫星视角)、`sinu`/`moll`/`robin`/`igh`/`eck*`(全球出图投影)。
+  - P2(基础设施):`Geod` 公开 API(距离/方位/面积;Karney 求解器已有,面积 C4 未移植)、
+    `+proj=geocent`(transform.go 内部有 geodetic↔geocentric,未暴露)。
+  - 明确出界(不打算做):pipeline 文本语法、网格基准(hgridshift/vgridshift)、
+    molodensky、3D/4D、proj.db/完整 EPSG、CRS 元数据(名称/datum/ID)。
+  - **大样本差分**(临时把 sweep 的 N_RANDOM 从 24 提到 300,跑完还原):
+    22 个 case × 312 点 ≈ 6.9k 点,forward 最大 2.15e-5 m(stere,已知特性)、
+    inverse 最大 2.8e-12 度,全绿,无新问题。
+
 ## HANDOVER(下个会话可直接接)
 
 1. **B 轨全部结案**:五投影(stere/laea/lcc/merc/tmerc)+ geolib + golden 生成器 +
