@@ -140,3 +140,29 @@ func TestBatchDomainErrorCompat(t *testing.T) {
 		t.Fatalf("域内点结果异常: (%v, %v)", x0, y0)
 	}
 }
+
+// TestInfoUnits Info 的 Units 字段要跟着 +units/+to_meter 走(否则调用方
+// 按「度 → 米」理解 km 制坐标会差 1000 倍)。
+func TestInfoUnits(t *testing.T) {
+	cases := []struct{ crs, want string }{
+		{"+proj=merc +a=6378137 +b=6378137", "度 → 米"},
+		{"+proj=merc +a=6378137 +b=6378137 +units=km", "度 → km"},
+		{"+proj=merc +a=6378137 +b=6378137 +units=us-ft", "度 → us-ft"},
+		{"+proj=merc +a=6378137 +b=6378137 +to_meter=1000", "度 → 米/1000(自定义 +to_meter)"},
+		// latlong 输出是度,单位层不参与,Units 保持原样
+		{"+proj=latlong +ellps=WGS84 +units=km", "度 → 度"},
+	}
+	for _, c := range cases {
+		p := mustProj(t, c.crs)
+		info, err := Info(p)
+		if err != nil {
+			t.Fatalf("%q: Info: %v", c.crs, err)
+		}
+		if info.Units != c.want {
+			t.Errorf("%q: Units = %q, want %q", c.crs, info.Units, c.want)
+		}
+	}
+	if _, err := Info(nil); err == nil {
+		t.Error("Info(nil) 应报错")
+	}
+}

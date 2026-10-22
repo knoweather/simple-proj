@@ -111,3 +111,25 @@ func TestInverseBatchDomain(t *testing.T) {
 		t.Errorf("域内逆值漂移: %v,%v (e=%g)", ll[2], ll[3], e)
 	}
 }
+
+// TestInverseBatchErrors 批量逆向的入参校验与域外语义(与 ForwardBatch 对称)。
+func TestInverseBatchErrors(t *testing.T) {
+	if _, err := InverseBatch(nil, []float64{1, 2}); err == nil {
+		t.Error("nil Projection 应报错")
+	}
+	p := mustProj(t, "+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84")
+	if _, err := InverseBatch(p, []float64{1, 2, 3}); err == nil {
+		t.Error("奇数长度应报错")
+	}
+	// 域外点写 NaN,批末 ErrDomain,域内点结果仍可用
+	out, err := InverseBatch(p, []float64{9e9, 9e9, 0, 0})
+	if !errors.Is(err, ErrDomain) {
+		t.Fatalf("批末应为 ErrDomain, got %v", err)
+	}
+	if !math.IsNaN(out[0]) || !math.IsNaN(out[1]) {
+		t.Errorf("域外点应写 NaN, got (%v,%v)", out[0], out[1])
+	}
+	if math.Abs(out[2]-105) > 1e-9 || math.Abs(out[3]) > 1e-9 {
+		t.Errorf("域内点应为 (105,0), got (%v,%v)", out[2], out[3])
+	}
+}

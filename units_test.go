@@ -11,6 +11,7 @@ package proj
 //   - 逆变换先乘回 to_meter 再进内核。
 
 import (
+	"errors"
 	"math"
 	"testing"
 )
@@ -128,5 +129,31 @@ func TestUnitsBatchConsistency(t *testing.T) {
 		if math.Abs(back[i]-in[i]) > 1e-9 {
 			t.Errorf("批量往返第 %d 项: %v vs %v", i, back[i], in[i])
 		}
+	}
+}
+
+// TestUnitsDomainErrorPassthrough 单位装饰器不能吞掉域外语义:
+// 错误要原样透出,坐标要留 NaN(不能被 to_meter 除成 -0 或 0)。
+func TestUnitsDomainErrorPassthrough(t *testing.T) {
+	p := mustProj(t, "+proj=geos +h=35785863 +lon_0=140.7 +ellps=WGS84 +units=km")
+	x, y, err := p.Forward(0, 0) // 地球背面,视界外
+	if !errors.Is(err, ErrDomain) {
+		t.Fatalf("应 ErrDomain, got %v", err)
+	}
+	if !math.IsNaN(x) || !math.IsNaN(y) {
+		t.Errorf("域外点应为 (NaN,NaN), got (%v,%v)", x, y)
+	}
+	// 批量:域外点 NaN、批末 ErrDomain,域内点仍按 km 输出
+	out, err := ForwardBatch(p, []float64{0, 0, 140, 20})
+	if !errors.Is(err, ErrDomain) {
+		t.Fatalf("批量应 ErrDomain, got %v", err)
+	}
+	if !math.IsNaN(out[0]) || !math.IsNaN(out[1]) {
+		t.Errorf("批量域外点应为 NaN, got (%v,%v)", out[0], out[1])
+	}
+	// pyproj: +proj=geos +h=35785863 +lon_0=140.7 +units=km 在 (140,20) 给
+	// (-72.4758714859, 2142.1906756109) km
+	if math.Abs(out[2]-(-72.4758714859)) > 1e-6 || math.Abs(out[3]-2142.1906756109) > 1e-6 {
+		t.Errorf("批量域内点应为 km 单位 (-72.4759, 2142.1907), got (%.6f,%.6f)", out[2], out[3])
 	}
 }

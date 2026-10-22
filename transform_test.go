@@ -14,8 +14,10 @@ package proj
 // 6.3e-9 / 5.0e-9 度,本库 6.3e-9 / 9.0e-9 度),所以往返门取 1e-8 度。
 
 import (
+	"errors"
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 )
 
@@ -234,5 +236,120 @@ func TestTransformIdentity(t *testing.T) {
 				t.Errorf("%s 恒等转换漂移: (%v,%v) → (%v,%v)", s, x, y, x2, y2)
 			}
 		}
+	}
+}
+
+// TestTransformerAccessorsAndErrors From/To、nil 入参、构造期与执行期的报错面。
+func TestTransformerAccessorsAndErrors(t *testing.T) {
+	from, err := Parse("EPSG:4326")
+	if err != nil {
+		t.Fatal(err)
+	}
+	to, err := Parse("EPSG:3857")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := NewTransformer(from, to)
+	if err != nil {
+		t.Fatalf("NewTransformer: %v", err)
+	}
+	if tr.From() != from || tr.To() != to {
+		t.Error("From()/To() 应回传构造时的 CRS")
+	}
+
+	if _, err := NewTransformer(nil, to); err == nil {
+		t.Error("nil 源 CRS 应报错")
+	}
+	if _, err := NewTransformer(from, nil); err == nil {
+		t.Error("nil 目标 CRS 应报错")
+	}
+
+	// 目标 CRS 本身构造不出来(utm 缺 zone)→ 构造期报错并指出是哪一侧
+	bad, err := Parse("+proj=utm +ellps=WGS84")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewTransformer(from, bad); err == nil {
+		t.Error("目标 CRS 无法建投影时应报错")
+	} else if !strings.Contains(err.Error(), "目标 CRS") {
+		t.Errorf("报错应指出是目标 CRS 一侧: %v", err)
+	}
+
+	// 执行期:源是 latlong,输入经度 400 → 普通 error(非 ErrDomain)
+	if _, _, err := tr.Transform(400, 0); err == nil {
+		t.Error("经度 400 应报错")
+	}
+}
+
+// TestTransformBatchDomain 批量里域外点写 NaN、批末返回 ErrDomain。
+func TestTransformBatchDomain(t *testing.T) {
+	// tmerc 的 |Ce| 限界:9e9 米在反变换时必然出界
+	tm, err := Parse("+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wgs, err := Parse("EPSG:4326")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := NewTransformer(tm, wgs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := tr.TransformBatch([]float64{9e9, 9e9, 0, 0})
+	if !errors.Is(err, ErrDomain) {
+		t.Fatalf("批末应为 ErrDomain, got %v", err)
+	}
+	if !math.IsNaN(out[0]) || !math.IsNaN(out[1]) {
+		t.Errorf("域外点应写 NaN, got (%v, %v)", out[0], out[1])
+	}
+	// (0,0) 在 tmerc 平面里是中央子午线上的点 → (105, 0)
+	if math.Abs(out[2]-105) > 1e-9 || math.Abs(out[3]) > 1e-9 {
+		t.Errorf("域内点应正常输出 (105, 0), got (%v, %v)", out[2], out[3])
+	}
+	// 非域外错误(坏输入)整批失败
+	if _, err := tr.TransformBatch([]float64{math.Inf(1), 0}); err == nil {
+		t.Error("Inf 输入应整批失败")
+	}
+}
+
+// TestGeocentricPole 地心↔大地在极点上的退化处理(经度丢失,纬度 ±90)。
+func TestGeocentricPole(t *testing.T) {
+	for _, c := range []struct{ z, wantLat float64 }{
+		{wgs84Ellipsoid.B, 90}, {-wgs84Ellipsoid.B, -90},
+	} {
+		lon, lat := geocentricToGeodetic(0, 0, c.z, wgs84Ellipsoid)
+		if lon != 0 || math.Abs(lat-c.wantLat) > 1e-12 {
+			t.Errorf("(0,0,%v) → (%.3f, %.12f), want (0, %v)", c.z, lon, lat, c.wantLat)
+		}
+	}
+	// 极点回地心:XY 归零
+	X, Y, Z := geodeticToGeocentric(123, 90, wgs84Ellipsoid)
+	if math.Hypot(X, Y) > 1e-9 || math.Abs(Z-wgs84Ellipsoid.B) > 1e-6 {
+		t.Errorf("北极 → (%.6f, %.6f, %.6f)", X, Y, Z)
+	}
+}
+
+// TestHelmertDegenerateScale 尺度因子退化成 0(s = 1+ppm·1e-6 = 0)时,
+// 矩阵不可逆,走兜底分支而不是 panic 或 NaN。
+func TestHelmertDegenerateScale(t *testing.T) {
+	c, err := Parse("+proj=longlat +ellps=bessel +towgs84=0,0,0,0,0,0,-1000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wgs, err := Parse("EPSG:4326")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, err := NewTransformer(wgs, c)
+	if err != nil {
+		t.Fatalf("NewTransformer: %v", err)
+	}
+	lon, lat, err := tr.Transform(13.4, 52.5)
+	if err != nil {
+		t.Fatalf("Transform: %v", err)
+	}
+	if math.IsNaN(lon) || math.IsNaN(lat) || math.IsInf(lon, 0) || math.IsInf(lat, 0) {
+		t.Errorf("退化尺度应给有限值, got (%.6f, %.6f)", lon, lat)
 	}
 }

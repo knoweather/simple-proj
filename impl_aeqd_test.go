@@ -154,3 +154,78 @@ func TestAeqdInputValidation(t *testing.T) {
 		t.Error("Inf 输入应报错")
 	}
 }
+
+// TestAeqdSphereAspects 球体三个方面(极轴 N/S、赤道)的正反变换。
+// 参照值 = pyproj 3.8.0 / PROJ 9.8.1 实测(2026-10-22),(lon=30, lat=60)。
+// 之前只测了球体斜轴,sweep 也没有球体极轴用例 —— 这条分支是补测出来的。
+func TestAeqdSphereAspects(t *testing.T) {
+	cases := []struct {
+		crs    string
+		x, y   float64
+		aspect string
+	}{
+		{"+proj=aeqd +lat_0=90 +lon_0=0 +R=6371000", 1667923.899668, -2888928.937384, "球体 北极"},
+		{"+proj=aeqd +lat_0=-90 +lon_0=0 +R=6371000", 8339619.498342, 14444644.686920, "球体 南极"},
+		{"+proj=aeqd +lat_0=0 +lon_0=0 +R=6371000", 1984274.428674, 6873728.253246, "球体 赤道"},
+	}
+	for _, c := range cases {
+		p := mustAeqd(t, c.crs)
+		x, y, err := p.Forward(30, 60)
+		if err != nil {
+			t.Fatalf("%s: %v", c.aspect, err)
+		}
+		if math.Abs(x-c.x) > aeqdFwdTol || math.Abs(y-c.y) > aeqdFwdTol {
+			t.Errorf("%s: (30,60) → (%.6f, %.6f), want (%.6f, %.6f)", c.aspect, x, y, c.x, c.y)
+		}
+		lon, lat, err := p.Inverse(x, y)
+		if err != nil || math.Abs(lon-30) > aeqdInvTol || math.Abs(lat-60) > aeqdInvTol {
+			t.Errorf("%s: 往返 = (%.12f, %.12f, %v)", c.aspect, lon, lat, err)
+		}
+	}
+}
+
+// TestAeqdSphereRadiusEdge 球面逆变换的半径边界:
+// |rho| 略超 π 会被夹到 π(PROJ 同款),远超 π 才报域外。
+func TestAeqdSphereRadiusEdge(t *testing.T) {
+	p := mustAeqd(t, "+proj=aeqd +lat_0=0 +lon_0=0 +R=6371000")
+	// 半径恰好 π·R 是中心的对跖点:赤道方面下即 (180°, 0°)
+	x, y := math.Pi*6371000, 0.0
+	lon, lat, err := p.Inverse(x, y)
+	if err != nil {
+		t.Fatalf("ρ=π·R 应可解: %v", err)
+	}
+	if math.Abs(math.Abs(lon)-180) > 1e-9 || math.Abs(lat) > 1e-6 {
+		t.Errorf("ρ=π·R 的反变换 = (%.9f, %.9f), want (±180, 0)", lon, lat)
+	}
+	// 略超 π(1e-12 以内)仍夹回 π
+	if _, _, err := p.Inverse(math.Pi*6371000+1e-6, 0); err != nil {
+		t.Errorf("略超 π 应夹回而不是报错: %v", err)
+	}
+	// 远超 π → ErrDomain
+	if _, _, err := p.Inverse(4*6371000, 0); !errors.Is(err, ErrDomain) {
+		t.Errorf("ρ>π·R 应 ErrDomain, got %v", err)
+	}
+}
+
+// TestAeqdParamValidation lat_0 越界要报错(通用数值域校验在 Parse 就拦下,
+// 投影级校验在 NewProjection;两处拦都算过)。
+func TestAeqdParamValidation(t *testing.T) {
+	c, err := Parse("+proj=aeqd +lat_0=95 +ellps=WGS84")
+	if err != nil {
+		return // Parse 拦下也算过
+	}
+	if _, err := c.NewProjection(); err == nil {
+		t.Error("lat_0=95 应报错")
+	}
+}
+
+// TestClampUnit asin 参数夹取(球面逆变换的数值兜底)。
+func TestClampUnit(t *testing.T) {
+	for _, c := range []struct{ in, want float64 }{
+		{0.5, 0.5}, {1.0000000000000002, 1}, {-1.0000000000000002, -1}, {2, 1}, {-2, -1},
+	} {
+		if got := clampUnit(c.in); got != c.want {
+			t.Errorf("clampUnit(%v) = %v, want %v", c.in, got, c.want)
+		}
+	}
+}

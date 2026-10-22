@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -390,5 +391,58 @@ func TestNewProjectionDispatch(t *testing.T) {
 	_, err = c2.NewProjection()
 	if err == nil || errors.Is(err, ErrDomain) {
 		t.Errorf("未注册投影应报非 ErrDomain 错误: %v", err)
+	}
+}
+
+// TestParseEdgeErrors 参数级边界:空名/缺值/非有限/错误后缀/坏 EPSG 码。
+func TestParseEdgeErrors(t *testing.T) {
+	cases := []struct{ src, wantSub string }{
+		{"+proj=merc +towgs84=1,abc,3", "towgs84"},
+		{"+proj=merc +=1", "空参数名"},
+		{"+proj", "+proj 必须带投影名"},
+		{"+proj=merc +lat_0=NaN", "非有限"},
+		{"+proj=merc +lat_0=Inf", "非有限"},
+		{"+proj=merc +k_0=1.5r", "'r' 弧度后缀"},
+		{"EPSG:abc", "缺少 +proj"},
+		{"EPSG:99999", "不支持的 EPSG"},
+	}
+	for _, c := range cases {
+		_, err := Parse(c.src)
+		if err == nil {
+			t.Errorf("Parse(%q) 应报错", c.src)
+			continue
+		}
+		if !strings.Contains(err.Error(), c.wantSub) {
+			t.Errorf("Parse(%q) 的报错应含 %q, got %v", c.src, c.wantSub, err)
+		}
+	}
+}
+
+// TestEPSGFeatureMatch UTM 用 proj 串写(无 EPSG 字面量)也要能特征回识别。
+func TestEPSGFeatureMatch(t *testing.T) {
+	cases := []struct {
+		crs  string
+		want int
+	}{
+		{"+proj=utm +zone=50 +ellps=WGS84", 32650},
+		{"+proj=utm +zone=50 +south +ellps=WGS84", 32750},
+		{"+proj=utm +zone=1 +ellps=WGS84", 32601},
+		{"+proj=utm +zone=60 +south +ellps=WGS84", 32760},
+		{"+proj=utm +zone=50 +ellps=GRS80", 0},           // 非 WGS84 轴
+		{"+proj=utm +zone=50 +units=km +ellps=WGS84", 0}, // 非米单位
+	}
+	for _, c := range cases {
+		crs, err := Parse(c.crs)
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", c.crs, err)
+		}
+		if got := crs.EPSG(); got != c.want {
+			t.Errorf("%q: EPSG() = %d, want %d", c.crs, got, c.want)
+		}
+	}
+	// nil 接收者
+	var nilCRS *CRS
+	if got := nilCRS.EPSG(); got != 0 {
+		t.Errorf("nil CRS 的 EPSG() 应为 0, got %d", got)
 	}
 }

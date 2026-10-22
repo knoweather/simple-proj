@@ -203,13 +203,13 @@ func geodAtan2d(y, x float64) float64 {
 	return ang
 }
 
-// geodSinCosSeries Clenshaw 求和:sinp 时 Σc[i]sin(2i·x)(i=1..n),
-// 否则 Σc[i]cos((2i+1)·x)(i=0..n-1);c[0] 在 sin 级数中不用。
-func geodSinCosSeries(sinp bool, sinx, cosx float64, c []float64, n int) float64 {
-	idx := n
-	if sinp {
-		idx = n + 1
-	}
+// geodSinSeries Clenshaw 求和 Σc[i]·sin(2i·x)(i=1..n),c[0] 不用。
+//
+// 对应 GeographicLib 的 SinCosSeries(TRUE, ...)。那个函数的 sinp=false 分支
+// (cos 级数)只服务 C4 面积项,本库不移植面积,所以这里只保留 sin 一支 ——
+// 保留 bool 参数会让一半代码永远执行不到。
+func geodSinSeries(sinx, cosx float64, c []float64, n int) float64 {
+	idx := n + 1                            // c += (n + sinp):指向最后一个元素之后
 	ar := 2 * (cosx - sinx) * (cosx + sinx) // 2·cos(2x)
 	var y0, y1 float64
 	if n&1 == 1 {
@@ -222,10 +222,7 @@ func geodSinCosSeries(sinp bool, sinx, cosx float64, c []float64, n int) float64
 		idx--
 		y0 = ar*y1 - y0 + c[idx]
 	}
-	if sinp {
-		return 2 * sinx * cosx * y0
-	}
-	return cosx * (y0 - y1)
+	return 2 * sinx * cosx * y0
 }
 
 // ---- eps 级数(系数表逐字取自 geodesic.c) --------------------------------
@@ -401,18 +398,18 @@ func (g *geod) lengths(eps, sig12, ssig1, csig1, dn1, ssig2, csig2, dn2,
 
 	var J12 float64
 	if wantS12 {
-		B1 := geodSinCosSeries(true, ssig2, csig2, ca, geodOrder) -
-			geodSinCosSeries(true, ssig1, csig1, ca, geodOrder)
+		B1 := geodSinSeries(ssig2, csig2, ca, geodOrder) -
+			geodSinSeries(ssig1, csig1, ca, geodOrder)
 		s12b = A1 * (sig12 + B1) // 缺一个 b 因子
-		B2 := geodSinCosSeries(true, ssig2, csig2, Cb[:], geodOrder) -
-			geodSinCosSeries(true, ssig1, csig1, Cb[:], geodOrder)
+		B2 := geodSinSeries(ssig2, csig2, Cb[:], geodOrder) -
+			geodSinSeries(ssig1, csig1, Cb[:], geodOrder)
 		J12 = m0*sig12 + (A1*B1 - A2*B2)
 	} else {
 		for l := 1; l <= geodOrder; l++ {
 			Cb[l] = A1*ca[l] - A2*Cb[l]
 		}
-		J12 = m0*sig12 + (geodSinCosSeries(true, ssig2, csig2, Cb[:], geodOrder) -
-			geodSinCosSeries(true, ssig1, csig1, Cb[:], geodOrder))
+		J12 = m0*sig12 + (geodSinSeries(ssig2, csig2, Cb[:], geodOrder) -
+			geodSinSeries(ssig1, csig1, Cb[:], geodOrder))
 	}
 	m12b = dn2*(csig1*ssig2) - dn1*(ssig1*csig2) - csig1*csig2*J12
 	return s12b, m12b, m0
@@ -612,8 +609,8 @@ func (g *geod) lambda12(sbet1, cbet1, dn1, sbet2, cbet2, dn2,
 	k2 := geodSq(calp0) * g.ep2
 	eps = k2 / (2*(1+math.Sqrt(1+k2)) + k2)
 	g.C3f(eps, ca)
-	B312 := geodSinCosSeries(true, ssig2, csig2, ca, geodOrder-1) -
-		geodSinCosSeries(true, ssig1, csig1, ca, geodOrder-1)
+	B312 := geodSinSeries(ssig2, csig2, ca, geodOrder-1) -
+		geodSinSeries(ssig1, csig1, ca, geodOrder-1)
 	domg12 = -g.f * g.A3f(eps) * salp0 * (sig12 + B312)
 	lam12 = eta + domg12
 
@@ -855,7 +852,7 @@ func (g *geod) initLine(l *geodLine, lat1, lon1, azi1 float64) {
 
 	l.A1m1 = geodA1m1f(eps)
 	geodC1f(eps, l.C1a[:])
-	l.B11 = geodSinCosSeries(true, l.ssig1, l.csig1, l.C1a[:], geodOrder)
+	l.B11 = geodSinSeries(l.ssig1, l.csig1, l.C1a[:], geodOrder)
 	s, c := math.Sincos(l.B11)
 	l.stau1 = l.ssig1*c + l.csig1*s
 	l.ctau1 = l.csig1*c - l.ssig1*s
@@ -863,7 +860,7 @@ func (g *geod) initLine(l *geodLine, lat1, lon1, azi1 float64) {
 
 	g.C3f(eps, l.C3a[:])
 	l.A3c = -g.f * l.salp0 * g.A3f(eps)
-	l.B31 = geodSinCosSeries(true, l.ssig1, l.csig1, l.C3a[:], geodOrder-1)
+	l.B31 = geodSinSeries(l.ssig1, l.csig1, l.C3a[:], geodOrder-1)
 }
 
 // position 对应 geod_genposition() 的距离模式:返回终点经纬度与方位(度)。
@@ -872,7 +869,7 @@ func (l *geodLine) position(s12 float64) (lat2, lon2, azi2 float64) {
 	tau12 := s12 / (l.b * (1 + l.A1m1))
 	s, c := math.Sincos(tau12)
 	// tau2 = tau1 + tau12
-	B12 := -geodSinCosSeries(true,
+	B12 := -geodSinSeries(
 		l.stau1*c+l.ctau1*s, l.ctau1*c-l.stau1*s, l.C1pa[:], geodOrder)
 	sig12 := tau12 - (B12 - l.B11)
 	ssig12, csig12 := math.Sincos(sig12)
@@ -880,7 +877,7 @@ func (l *geodLine) position(s12 float64) (lat2, lon2, azi2 float64) {
 		// |f| > 1/100 时距离级数不准,用一次 Newton 修正 sig12
 		ssig2 := l.ssig1*csig12 + l.csig1*ssig12
 		csig2 := l.csig1*csig12 - l.ssig1*ssig12
-		B12 = geodSinCosSeries(true, ssig2, csig2, l.C1a[:], geodOrder)
+		B12 = geodSinSeries(ssig2, csig2, l.C1a[:], geodOrder)
 		serr := (1+l.A1m1)*(sig12+(B12-l.B11)) - s12/l.b
 		sig12 -= serr / math.Sqrt(1+l.k2*geodSq(ssig2))
 		ssig12, csig12 = math.Sincos(sig12)
@@ -902,7 +899,7 @@ func (l *geodLine) position(s12 float64) (lat2, lon2, azi2 float64) {
 	somg2 := l.salp0 * ssig2
 	comg2 := csig2
 	omg12 := math.Atan2(somg2*l.comg1-comg2*l.somg1, comg2*l.comg1+somg2*l.somg1)
-	lam12 := omg12 + l.A3c*(sig12+(geodSinCosSeries(true, ssig2, csig2, l.C3a[:], geodOrder-1)-l.B31))
+	lam12 := omg12 + l.A3c*(sig12+(geodSinSeries(ssig2, csig2, l.C3a[:], geodOrder-1)-l.B31))
 	lon12 := lam12 * (180 / math.Pi)
 	lon2 = geodAngNormalize(geodAngNormalize(l.lon1) + geodAngNormalize(lon12))
 
