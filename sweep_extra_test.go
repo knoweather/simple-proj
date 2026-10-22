@@ -87,7 +87,8 @@ func TestSweepExtra(t *testing.T) {
 
 	for _, name := range []string{"latlong", "eqc", "geos_x", "geos_y", "stere",
 		"stere_eq", "stere_obl", "laea", "laea_eq", "laea_np", "laea_sp",
-		"lcc", "merc", "tmerc"} {
+		"lcc", "merc", "tmerc", "aeqd_np", "aeqd_sp", "aeqd_eq", "aeqd_obl",
+		"aeqd_sph", "utm", "utm_south"} {
 		c, ok := s.Cases[name]
 		if !ok {
 			t.Fatalf("sweep case %q missing", name)
@@ -193,7 +194,8 @@ func TestThreadSafety(t *testing.T) {
 	const workers = 8
 
 	for _, name := range []string{"stere", "stere_eq", "stere_obl", "laea",
-		"laea_eq", "laea_np", "laea_sp", "lcc", "merc", "tmerc"} {
+		"laea_eq", "laea_np", "laea_sp", "lcc", "merc", "tmerc",
+		"aeqd_obl", "aeqd_np", "utm"} {
 		c := s.Cases[name]
 		crs, err := Parse(c.CRS)
 		if err != nil {

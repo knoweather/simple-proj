@@ -140,3 +140,13 @@ func paramString(c *CRS, key, def string) string {
 	}
 	return def
 }
+
+// hasFlag 判断布尔旗标是否出现(+south/+no_defs 这类无值参数在
+// UnknownParams 里存空串,与「不存在」靠 key 在不在区分)。
+func hasFlag(c *CRS, key string) bool {
+	if c == nil || c.UnknownParams == nil {
+		return false
+	}
+	_, ok := c.UnknownParams[key]
+	return ok
+}

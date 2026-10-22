@@ -16,6 +16,10 @@ func (c *CRS) String() string {
 		if base, found := specialCodes[code]; found {
 			return base
 		}
+		// WGS84 UTM(326xx/327xx)同样展开成等价 proj 串
+		if base, found := utmEPSGString(code); found {
+			return base
+		}
 	}
 	return c.projString
 }

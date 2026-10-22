@@ -104,6 +104,20 @@ var projInfoTable = map[string]projInfoEntry{
 		domain:      "|Ce| ≤ 2.623395162778 rad(赤道约 ±81.7° 中央子午线圈外)",
 		accuracy:    "golden forward ≤ 7.45e-9 m,inverse ≤ 3.13e-13 度",
 	},
+	"aeqd": {
+		description: "Azimuthal Equidistant(方位等距;极轴/赤道/斜轴,球+椭球)",
+		hasInverse:  true,
+		units:       "度 → 米",
+		domain:      "球体:中心对跖点/极轴对侧极点 → ErrDomain;椭球:全域可解;k_0 忽略",
+		accuracy:    "sweep forward ≤ 3.3e-8 m,inverse ≤ 1.6e-12 度;椭球斜轴走 Karney 大地线(geodesic.go)",
+	},
+	"utm": {
+		description: "Universal Transverse Mercator(= tmerc + zone 派生的固定参数)",
+		hasInverse:  true,
+		units:       "度 → 米",
+		domain:      "+zone 须为 1..60;域规则同 tmerc(±81.7° 中央子午线);+south 加 1e7 假北移",
+		accuracy:    "sweep forward ≤ 3.7e-9 m,inverse ≤ 1.7e-13 度(等价 tmerc)",
+	},
 }
 
 // Info 返回投影实例的元数据(goproj Info() 的对应物,C#14)。

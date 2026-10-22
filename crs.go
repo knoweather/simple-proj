@@ -30,6 +30,8 @@ var knownProj = map[string]string{
 	"lcc":     "lcc",
 	"merc":    "merc",
 	"tmerc":   "tmerc",
+	"aeqd":    "aeqd",
+	"utm":     "utm",
 }
 
 // knownNumericKeys 识别的数值参数(收纳进 CRS.Params)。
@@ -38,6 +40,7 @@ var knownNumericKeys = map[string]bool{
 	"a": true, "b": true, "es": true, "f": true, "rf": true, "R": true,
 	"h": true, "k_0": true, "lat_0": true, "lat_1": true, "lat_2": true,
 	"lat_ts": true, "lon_0": true, "x_0": true, "y_0": true,
+	"zone": true, // utm 带号 1..60
 }
 
 // paramAliases 拼写容错(PROJ 新旧写法):规范化时重命名为带下划线/大写形式。
@@ -82,6 +85,8 @@ var unsupportedParamReason = map[string]string{
 	"datum":      "基准(datum)定义",
 	"init":       "+init= 语法(PROJ 6 起已移除)",
 	"defs":       "proj 定义文件",
+	"approx":     "utm 的低阶近似路径(本库恒定走精确 etmerc)",
+	"guam":       "aeqd 的 Guam 变体(旧式区域投影)",
 }
 
 // benignNoopKeys 接受但确实不影响结果的键(PROJ 变换语境下的无操作)。
@@ -168,7 +173,10 @@ func Parse(s string) (*CRS, error) {
 	if code, ok := parseEPSGCode(raw); ok {
 		base, found := specialCodes[code]
 		if !found {
-			return nil, fmt.Errorf("proj: 不支持的 EPSG:%d(v0 只收录 4326/4269/3857)", code)
+			base, found = utmEPSGString(code)
+		}
+		if !found {
+			return nil, fmt.Errorf("proj: 不支持的 EPSG:%d(v0 只收录 4326/4269/3857 与 WGS84 UTM 32601-32660/32701-32760)", code)
 		}
 		crs, err := parseProjString(base)
 		if err != nil {
@@ -178,6 +186,18 @@ func Parse(s string) (*CRS, error) {
 		return crs, nil
 	}
 	return parseProjString(raw)
+}
+
+// utmEPSGString WGS84 UTM 的 EPSG 区间 → proj 串:
+// 32601-32660 为北半球 zone 1-60,32701-32760 为南半球。
+func utmEPSGString(code int) (string, bool) {
+	switch {
+	case code >= 32601 && code <= 32660:
+		return fmt.Sprintf("+proj=utm +zone=%d +ellps=WGS84", code-32600), true
+	case code >= 32701 && code <= 32760:
+		return fmt.Sprintf("+proj=utm +zone=%d +south +ellps=WGS84", code-32700), true
+	}
+	return "", false
 }
 
 // parseProjString 解析纯 proj 串(不做 EPSG 特例)。projString 从此处定。
@@ -356,6 +376,9 @@ func (c *CRS) EPSG() int {
 			}
 			return code
 		}
+		if _, found := utmEPSGString(code); found {
+			return code
+		}
 	}
 	// 特征比对(容忍参数缺失但语义等同)
 	if _, isLatlong := knownProj[c.Proj]; isLatlong && c.Proj == "latlong" {
@@ -373,6 +396,18 @@ func (c *CRS) EPSG() int {
 		y0, _ := paramFloat(c, "y_0", 0)
 		if latTs == 0 && lon0 == 0 && x0 == 0 && y0 == 0 {
 			return 3857
+		}
+	}
+	// UTM:WGS84 椭球 + 合法 zone → 326xx/327xx
+	if c.Proj == "utm" && near(c.Ellipsoid.A, 6378137.0) && near(c.Ellipsoid.B, 6378137.0*(1-1/298.257223563)) {
+		if zone, ok := paramFloat(c, "zone", 0); ok {
+			z := int(zone)
+			if float64(z) == zone && z >= 1 && z <= 60 {
+				if hasFlag(c, "south") {
+					return 32700 + z
+				}
+				return 32600 + z
+			}
 		}
 	}
 	return 0

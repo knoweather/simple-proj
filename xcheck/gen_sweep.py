@@ -97,6 +97,14 @@ CASES = {
     "lcc": "+proj=lcc +lat_1=30 +lat_2=60 +lat_0=0 +lon_0=100 +ellps=WGS84",
     "merc": "+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0 +y_0=0 +units=m",
     "tmerc": "+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84",
+    # aeqd 四种方面(极轴 N/S、赤道、斜轴)+ 球体斜轴;utm 北/南半球
+    "aeqd_np": "+proj=aeqd +lat_0=90 +lon_0=0 +ellps=WGS84",
+    "aeqd_sp": "+proj=aeqd +lat_0=-90 +lon_0=0 +ellps=WGS84",
+    "aeqd_eq": "+proj=aeqd +lat_0=0 +lon_0=0 +ellps=WGS84",
+    "aeqd_obl": "+proj=aeqd +lat_0=45 +lon_0=10 +ellps=WGS84",
+    "aeqd_sph": "+proj=aeqd +lat_0=45 +lon_0=10 +R=6371000",
+    "utm": "+proj=utm +zone=50 +ellps=WGS84",
+    "utm_south": "+proj=utm +zone=33 +south +ellps=WGS84",
 }
 
 # Structured edge points (lon, lat) per case: centre, meridians, near-pole,
@@ -130,6 +138,24 @@ EDGES = {
              (-90, -60), (0, 85), (180, 0), (-180, 0), (45, -85), (-45, 85)],
     "tmerc": [(105, 0), (105, 45), (105, -45), (105, 88), (105, -88), (35, 0), (175, 0),
               (105, 89), (30, 30), (180, -30), (40, -85), (170, 85)],
+    "aeqd_np": [(0, 90), (0, 0), (0, 45), (90, 45), (-90, -45), (180, 10), (10, 80),
+                (170, 80), (-170, 80), (45, 85), (-45, -85), (0, -90)],
+    "aeqd_sp": [(0, -90), (0, 0), (0, 45), (90, 45), (-90, -45), (180, 10), (10, 80),
+                (170, 80), (-170, 80), (45, 85), (-45, -85), (0, 90)],
+    "aeqd_eq": [(0, 0), (0, 45), (0, -45), (90, 30), (-90, -30), (180, 0), (180, 0.001),
+                (45, 80), (-45, -80), (10, 89), (-10, -89), (179.9, 0)],
+    "aeqd_obl": [(10, 45), (10, -45), (10, 0), (-170, 45), (170, -45), (100, 45),
+                 (100, 80), (10, 88), (-80, -10), (55, -80), (10, -88), (170, 80)],
+    # N.B. (100, 45) is deliberately absent: that is the knife-edge where
+    # PROJ's `xy.y == 0 ? lam = 0` shortcut in aeqd_s_inverse loses 90 deg of
+    # longitude (the residual y is ~1e-16 and C rounds it to exactly 0).
+    # Go keeps atan2 there, so a round-trip assertion would flag PROJ, not us.
+    "aeqd_sph": [(10, 45), (10, -45), (10, 0), (-170, 45), (170, -45), (100, 44.5),
+                 (100, 80), (10, 88), (-80, -10), (55, -80), (10, -88), (170, 80)],
+    "utm": [(117, 0), (117, 45), (117, -45), (117, 88), (117, -88), (114, 0), (120, 0),
+            (60, 30), (180, -30), (117, 89), (117, -89), (30, 85)],
+    "utm_south": [(15, 0), (15, 45), (15, -45), (15, 88), (15, -88), (12, 0), (18, 0),
+                  (60, 30), (180, -30), (15, 89), (15, -89), (30, 85)],
 }
 
 # Random-point domain boxes per case: (lon_lo, lon_hi, lat_lo, lat_hi) — chosen
@@ -151,6 +177,13 @@ BOXES = {
     "lcc": (-180, 180, -89, 89),
     "merc": (-180, 180, -89.5, 89.5),
     "tmerc": (30, 180, -88, 88),
+    "aeqd_np": (-180, 180, -89, 89),
+    "aeqd_sp": (-180, 180, -89, 89),
+    "aeqd_eq": (-180, 180, -89, 89),
+    "aeqd_obl": (-180, 180, -89, 89),
+    "aeqd_sph": (-180, 180, -89, 89),
+    "utm": (50, 180, -88, 88),
+    "utm_south": (-30, 100, -88, 88),
 }
 
 # Domain probes: lon/lat => forward probe, x/y => inverse probe. pyproj decides
@@ -165,6 +198,14 @@ SPECIALS = {
               {"desc": "inverse far outside", "x": 9e9, "y": 9e9}],
     "lcc": [{"desc": "far pole (outside PROJ lcc domain)", "lon": 100.0, "lat": -90.0}],
     "laea": [{"desc": "antipode of lat_0/lon_0 (infinite radius)", "lon": -170.0, "lat": -45.0}],
+    "aeqd_sph": [{"desc": "antipode of the spherical oblique centre (infinite radius)",
+                  "lon": -170.0, "lat": -45.0},
+                 {"desc": "inverse far outside the sphere radius (>pi)",
+                  "x": 3.0e7, "y": 3.0e7}],
+    "aeqd_np": [{"desc": "opposite pole has no defined azimuth (sphere branch only)",
+                 "lon": 0.0, "lat": -90.0}],
+    "utm": [{"desc": "beyond ~81.7 deg of the central meridian at the equator",
+             "lon": 117.0 + 85.0, "lat": 0.0}],
 }
 
 N_RANDOM = 24
