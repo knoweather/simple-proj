@@ -260,6 +260,36 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
     锁定源码 `eol=lf` 并 `git add --renormalize`,把全仓统一成 LF,根除该 churn
     (C#11 意图的真正落地,用户已授权越过 A/B 协作约束)。
 
+
+- 2026-10-22 **[全项] 对齐 pyproj 的功能缺口(用户:"看一下这里和 pyproj 还有什么
+  功能上区别" → "一项一项做吧")**。五项按序落地,每项独立提交 + 对拍:
+  - **① 静默参数改 fail-loud**(62a44e9):`+pm`/`+axis`/`+nadgrids`/`+towgs84`(当时)/
+    `+datum`(非 WGS84)/`+R_*` 族/`+geoc`/`+over`/`+geoidgrids`/`+init` 在 Parse
+    阶段报错 —— 实测这些键此前被静默丢进 UnknownParams,`+pm=paris` 会给出错经度
+    却不报错。恒等值(`+towgs84=0,0,0`、`+nadgrids=@null`、`+datum=WGS84`、
+    `+type=crs`)放行。顺带修 eqc/geos **漏掉 x_0/y_0**(A 轨历史遗漏,B 轨五投影
+    早就支持),用 pyproj 参照值锁死。
+  - **② aeqd + utm**(48212b3):aeqd 四方面(极轴 N/S、赤道、斜轴)× 球/椭球;
+    椭球斜轴按 PROJ aeqd.cpp 走大地线(x = s12·sin(azi1))。为此移植
+    **geodesic.go**(GeographicLib 6 阶级数,只留 inverse/direct),对拍
+    `xcheck/geodesic_ref.json`:Δs12 ≤ 3.7e-9 m、Δ方位 ≤ 8.1e-13 度。
+    踩坑:GeographicLib 的 `C3f` 里 `mult *= eps` 在 polyval **之前**(与 C1f/C2f
+    相反),装反导致经度差 0.024°。utm = tmerc + zone 派生参数,含 EPSG 326xx/327xx。
+  - **③ +units/+to_meter**(7b167fc):框架层 `unitScaled` 装饰器,内核仍按米
+    (含 x_0);`+units` 胜 `+to_meter`;latlong 不换算;EPSG 特征识别在非米单位下
+    返回 0。
+  - **④ WKT2/WKT1**(e5d1dd1):`wkt.go` 递归下降 → **翻译成等价 proj 串**再入
+    Parse(复用全部归一化/校验/单位层)。踩坑三处:WKT1 的 PROJCS 里有两个 UNIT
+    (内层 GEOGCS 的 0.01745 会被当成线单位)、WKT2 的 LENGTHUNIT 挂在 AXIS 而非
+    CS、GDAL WKT1 的 `Polar_Stereographic` 把 latitude_of_origin 写成标准纬线。
+    角度单位必须按名字短路成 1(0.0174532925199433 乘 180/π 得 1.0000000000000002,
+    会把 lon_0=180 顶成 180.00000000000003,eqc 的 x 直接翻号)。
+  - **⑤ Transformer + towgs84**(37ed86d):CRS→CRS(替代 `+proj=pipeline` 的文本
+    DSL),Helmert 3/7 参经 WGS84 中转;反向解 `M·x = X'−T` 而非 PROJ 的参数取负
+    (差 0.4 mm,记入 README 已知差异)。单投影带 towgs84 明确拒收。
+  - 末态门:vet 0 / gofmt 干净 / 全量测试绿 / 覆盖率 **91.9%** / 交叉编译 3 组过。
+    sweep 扩到 22 个 case;新增 `xcheck/gen_geodesic.py`、`gen_wkt.py`。
+
 ## HANDOVER(下个会话可直接接)
 
 1. **B 轨全部结案**:五投影(stere/laea/lcc/merc/tmerc)+ geolib + golden 生成器 +
