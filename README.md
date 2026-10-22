@@ -137,9 +137,13 @@ NaN 输入同样报错。
 
 ```go
 crs, _ := proj.Parse("+proj=tmerc +k=0.9996 +lat_0=0 +lon_0=105 +ellps=WGS84")
-crs.String()   // 规范串: +proj=tmerc +lat_0=0 +lon_0=105 +k_0=0.9996 +ellps=WGS84
-               // (k/k0/lat0 等别名归一,k_0 缺省补 1,lat_0/lon_0/x_0/y_0 缺省补 0)
+crs.String()   // "+proj=tmerc +k=0.9996 +lat_0=0 +lon_0=105 +ellps=WGS84"
+               // 原样回放(别名归一/默认值填补只发生在内部 Params,不改写字符串);
+               // 只有 "EPSG:xxxx" 进门的 CRS 会回放成该码对应的规范 proj 串
 ```
+
+内部 `Params` 里才是归一后的形态(`k`/`k0` → `k_0`、缺省补 `k_0=1` 与
+`lat_0/lon_0/x_0/y_0=0`),可以用 `crs.Params["k_0"]` 取。
 
 **并发共享一个 Projection**（无状态、不可变）：
 
