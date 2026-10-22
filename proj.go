@@ -44,6 +44,11 @@ type Projection interface {
 // NewProjection 依 CRS.Proj 在工厂表里查找实现,返回实例。
 // 批量推荐: crs.NewProjection() 一次然后持句柄(DESIGN §2.1)。
 // +proj 名合法但实现尚未注册(如 B 轨投影未移交)时报错,不 panic。
+//
+// 非米单位(+units/+to_meter)在这里套一层换算:各 impl 一律按**米**计算
+// (含 x_0/y_0),对外坐标 = 米 / to_meter —— 与 PROJ 的 pj_fwd 收尾一致
+// (pyproj 实测:+units=km +x_0=500000 的输出是 1113.19+500,即 x_0 也按米
+// 参与后再整体换算)。latlong 输出是度,不做换算(PROJ 同样忽略)。
 func (c *CRS) NewProjection() (Projection, error) {
 	if c == nil || c.Proj == "" {
 		return nil, errors.New("proj: 零值 CRS 不可用,只能由 Parse 构造")
@@ -52,7 +57,33 @@ func (c *CRS) NewProjection() (Projection, error) {
 	if !ok {
 		return nil, fmt.Errorf("proj: 投影 %q 尚未注册(+proj 合法但缺实现)", c.Proj)
 	}
-	return factory(c)
+	p, err := factory(c)
+	if err != nil {
+		return nil, err
+	}
+	if f, has := paramFloat(c, "to_meter", 1); has && f != 1 && c.Proj != "latlong" {
+		return &unitScaled{Projection: p, toMeter: f}, nil
+	}
+	return p, nil
+}
+
+// unitScaled 单位换算装饰器:+units/+to_meter 时把米制坐标换成目标单位。
+// 只包一层接口转发,内核实现与 bench 路径不变。
+type unitScaled struct {
+	Projection
+	toMeter float64 // 1 单位 = toMeter 米
+}
+
+func (u *unitScaled) Forward(lon, lat float64) (float64, float64, error) {
+	x, y, err := u.Projection.Forward(lon, lat)
+	if err != nil {
+		return x, y, err // NaN/ErrDomain 原样透出
+	}
+	return x / u.toMeter, y / u.toMeter, nil
+}
+
+func (u *unitScaled) Inverse(x, y float64) (float64, float64, error) {
+	return u.Projection.Inverse(x*u.toMeter, y*u.toMeter)
 }
 
 // ForwardBatch 批量正向:lonlat 为行主序 packed [lon0,lat0,lon1,lat1,...](度),

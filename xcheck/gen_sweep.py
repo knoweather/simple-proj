@@ -105,6 +105,8 @@ CASES = {
     "aeqd_sph": "+proj=aeqd +lat_0=45 +lon_0=10 +R=6371000",
     "utm": "+proj=utm +zone=50 +ellps=WGS84",
     "utm_south": "+proj=utm +zone=33 +south +ellps=WGS84",
+    # 非米单位:走 NewProjection 的单位换算层(+units=km)
+    "merc_km": "+proj=merc +a=6378137 +b=6378137 +lat_ts=0 +lon_0=0 +units=km",
 }
 
 # Structured edge points (lon, lat) per case: centre, meridians, near-pole,
@@ -156,6 +158,8 @@ EDGES = {
             (60, 30), (180, -30), (117, 89), (117, -89), (30, 85)],
     "utm_south": [(15, 0), (15, 45), (15, -45), (15, 88), (15, -88), (12, 0), (18, 0),
                   (60, 30), (180, -30), (15, 89), (15, -89), (30, 85)],
+    "merc_km": [(0, 0), (0, 89.9), (0, -89.9), (179.9, 45), (-179.9, -45), (90, 60),
+                (-90, -60), (0, 85), (180, 0), (-180, 0), (45, -85), (-45, 85)],
 }
 
 # Random-point domain boxes per case: (lon_lo, lon_hi, lat_lo, lat_hi) — chosen
@@ -184,6 +188,7 @@ BOXES = {
     "aeqd_sph": (-180, 180, -89, 89),
     "utm": (50, 180, -88, 88),
     "utm_south": (-30, 100, -88, 88),
+    "merc_km": (-180, 180, -89.5, 89.5),
 }
 
 # Domain probes: lon/lat => forward probe, x/y => inverse probe. pyproj decides

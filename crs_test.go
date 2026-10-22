@@ -228,12 +228,11 @@ func TestParseUnknownParams(t *testing.T) {
 }
 
 // TestParseRejectsUnsupportedSemantics 有语义但未实现的键必须 fail-loud:
-// 静默忽略 +pm/+towgs84/+to_meter 之类会让坐标算错却不报错(本次改造的核心)。
+// 静默忽略 +pm/+towgs84/+nadgrids 之类会让坐标算错却不报错(本次改造的核心)。
 func TestParseRejectsUnsupportedSemantics(t *testing.T) {
 	cases := []string{
 		"+proj=merc +pm=paris +ellps=WGS84",              // 本初子午线
 		"+proj=merc +pm=paris",                           // 缺值同罪
-		"+proj=merc +to_meter=0.3048 +ellps=WGS84",       // 单位换算
 		"+proj=merc +axis=neu +ellps=WGS84",              // 轴序
 		"+proj=merc +nadgrids=conus +ellps=WGS84",        // 网格基准
 		"+proj=merc +towgs84=1,2,3 +ellps=WGS84",         // Helmert 非零
@@ -287,7 +286,7 @@ func TestParseErrors(t *testing.T) {
 		"+proj=abc +ellps=WGS84",            // 未知投影
 		"+proj=geos +lon_0=abc",             // 数值错
 		"+proj=geos +h",                     // 数值缺值
-		"+proj=geos +units=km",              // 非 m
+		"+proj=geos +units=furlong",         // 未知单位(km 已支持)
 		"+proj=eqc +lat_ts=95 +ellps=WGS84", // 纬度出界
 		"+proj=geos +lon_0=500",             // 经度出界
 		"+proj=geos +k_0=0",                 // k_0 非正

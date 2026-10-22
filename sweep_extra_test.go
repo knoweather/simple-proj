@@ -88,7 +88,7 @@ func TestSweepExtra(t *testing.T) {
 	for _, name := range []string{"latlong", "eqc", "geos_x", "geos_y", "stere",
 		"stere_eq", "stere_obl", "laea", "laea_eq", "laea_np", "laea_sp",
 		"lcc", "merc", "tmerc", "aeqd_np", "aeqd_sp", "aeqd_eq", "aeqd_obl",
-		"aeqd_sph", "utm", "utm_south"} {
+		"aeqd_sph", "utm", "utm_south", "merc_km"} {
 		c, ok := s.Cases[name]
 		if !ok {
 			t.Fatalf("sweep case %q missing", name)

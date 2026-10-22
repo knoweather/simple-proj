@@ -135,6 +135,17 @@ func Info(p Projection) (*ProjectionInfo, error) {
 	if !ok {
 		return nil, fmt.Errorf("proj: Info: 未知投影 %q(表内应有尽有,此为防御分支)", c.Proj)
 	}
+	// 单位字段跟着 CRS 实际配置走(+units/+to_meter 生效时不能还报「米」)。
+	units := e.units
+	if c.Proj != "latlong" {
+		if f, has := paramFloat(c, "to_meter", 1); has && f != 1 {
+			if name := paramString(c, "units", ""); name != "" {
+				units = "度 → " + name
+			} else {
+				units = fmt.Sprintf("度 → 米/%g(自定义 +to_meter)", f)
+			}
+		}
+	}
 	return &ProjectionInfo{
 		Name:        c.Proj,
 		Description: e.description,
@@ -143,7 +154,7 @@ func Info(p Projection) (*ProjectionInfo, error) {
 		Spherical:   c.Ellipsoid.A == c.Ellipsoid.B,
 		Ellipsoidal: c.Ellipsoid.A != c.Ellipsoid.B,
 		HasInverse:  e.hasInverse,
-		Units:       e.units,
+		Units:       units,
 		Domain:      e.domain,
 		Accuracy:    e.accuracy,
 	}, nil

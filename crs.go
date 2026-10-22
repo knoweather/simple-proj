@@ -40,7 +40,34 @@ var knownNumericKeys = map[string]bool{
 	"a": true, "b": true, "es": true, "f": true, "rf": true, "R": true,
 	"h": true, "k_0": true, "lat_0": true, "lat_1": true, "lat_2": true,
 	"lat_ts": true, "lon_0": true, "x_0": true, "y_0": true,
-	"zone": true, // utm 带号 1..60
+	"zone":     true, // utm 带号 1..60
+	"to_meter": true, // 自定义单位:每单位多少米
+}
+
+// unitToMeter PROJ proj_units.cpp 的惯用单位表(1 单位 = 多少米)。
+// 与 pyproj 3.8.0 实测对齐:输出坐标 = 米 / to_meter(即换成该单位)。
+var unitToMeter = map[string]float64{
+	"km":     1000.0,
+	"m":      1.0,
+	"dm":     0.1,
+	"cm":     0.01,
+	"mm":     0.001,
+	"kmi":    1852.0, // 国际海里
+	"in":     0.0254,
+	"ft":     0.3048,
+	"yd":     0.9144,
+	"mi":     1609.344,
+	"fath":   1.8288,
+	"ch":     20.1168,
+	"link":   0.201168,
+	"us-in":  1.0 / 39.37,
+	"us-ft":  1200.0 / 3937.0,
+	"us-yd":  3600.0 / 3937.0,
+	"us-ch":  79200.0 / 3937.0,
+	"us-mi":  6336000.0 / 3937.0,
+	"ind-yd": 0.91439523,
+	"ind-ft": 0.30479841,
+	"ind-ch": 20.11669506,
 }
 
 // paramAliases 拼写容错(PROJ 新旧写法):规范化时重命名为带下划线/大写形式。
@@ -59,8 +86,9 @@ var angularKeys = map[string]bool{
 // unsupportedParamReason 本库「认识语义但没实现」的参数 → Parse 直接报错。
 //
 // 判据不是「我们认不认识这个键」,而是「忽略它会不会让结果算错」:
-//   - +pm/+axis/+to_meter/+nadgrids/+towgs84(非零)/+datum(非 WGS84)/+R_* 族/
-//     +geoc/+over/+geoidgrids 在 PROJ 里都会改变输出,静默丢弃 = 悄悄算错,故拒收;
+//   - +pm/+axis/+nadgrids/+towgs84(非零)/+datum(非 WGS84)/+R_* 族/+geoc/
+//     +over/+geoidgrids 在 PROJ 里都会改变输出,静默丢弃 = 悄悄算错,故拒收;
+//     (+units/+to_meter 已支持,见 unitToMeter 与 NewProjection 的换算层)
 //   - +sweep 只在 geos 有意义,其他投影下 PROJ 同样忽略,不会改变输出,故不在此表
 //     (仍由 geos 的适配层消费)。
 //
@@ -68,7 +96,6 @@ var angularKeys = map[string]bool{
 var unsupportedParamReason = map[string]string{
 	"pm":         "本初子午线偏移",
 	"axis":       "轴序重排(axis order)",
-	"to_meter":   "自定义单位换算",
 	"nadgrids":   "NTv2/HARN 网格基准变换",
 	"geoidgrids": "大地水准面网格",
 	"geoc":       "地心纬度",
@@ -154,12 +181,13 @@ var specialCodeOrder = []int{4326, 4269, 3857, 900913}
 //   - 度数参数支持 "+lat_0=1.57r" 弧度后缀;
 //   - 默认值填补: lat_0/lon_0/x_0/y_0 = 0、k_0 = 1(其余投影专属参数由 impl 处理);
 //   - 未知 +key 不报错,原样进 UnknownParams;**已知语义但未实现**的键
-//     (pm/axis/to_meter/nadgrids/towgs84≠0/datum≠WGS84/R_* 族/geoc/over/
+//     (pm/axis/nadgrids/towgs84≠0/datum≠WGS84/R_* 族/geoc/over/
 //     geoidgrids/init 等)直接报错——静默忽略会让结果算错(见
 //     unsupportedParamReason);恒等值(nadgrids=@null、towgs84=0,0,0、
 //     datum=WGS84)与 no_defs/type/wktext 放行;
 //   - 椭球键收敛进数值表由 ellipsoid.go 组合推导,发现矛盾即报错;
-//   - +units 只认 "m"(只认米,DESIGN §1.1);
+//   - +units 查 unitToMeter 表(m/km/ft/us-ft/mi/...),+to_meter 自定义;
+//     两者同给时 +units 胜;坐标按「米 / to_meter」输出(见 proj.go 的换算层);
 //   - 未知 +proj 报错。
 //
 // 同名键后者胜;返回的 CRS 不可变(约定),零值不入。
@@ -209,6 +237,7 @@ func parseProjString(s string) (*CRS, error) {
 	crs.projString = strings.TrimSpace(s)
 
 	ellpsName := ""
+	unitsName := ""
 
 	tokens := parseTokens(crs.projString)
 	for _, tok := range tokens {
@@ -243,9 +272,12 @@ func parseProjString(s string) (*CRS, error) {
 		case key == "ellps":
 			ellpsName = strings.TrimSpace(val)
 		case key == "units":
-			if val != "m" {
-				return nil, fmt.Errorf("proj: 不支持的 +units=%q(v0 只认米)", val)
+			name := strings.ToLower(strings.TrimSpace(val))
+			if _, known := unitToMeter[name]; !known {
+				return nil, fmt.Errorf("proj: 未知 +units=%q(支持 km/m/dm/cm/mm/kmi/in/ft/yd/mi/fath/ch/link/us-*/ind-*)", val)
 			}
+			unitsName = name
+			crs.UnknownParams["units"] = name
 		case knownNumericKeys[key]:
 			num, err := parseParamNumber(key, val)
 			if err != nil {
@@ -271,6 +303,10 @@ func parseProjString(s string) (*CRS, error) {
 		return nil, fmt.Errorf("proj: 缺少 +proj 名(+proj=...)")
 	}
 
+	// +units 与 +to_meter 同时出现时 +units 胜(PROJ pj_units 口径,pyproj 实测)。
+	if unitsName != "" {
+		crs.Params["to_meter"] = unitToMeter[unitsName]
+	}
 	applyDefaults(crs.Params)
 	if err := validateNumericParams(crs.Params); err != nil {
 		return nil, err
@@ -359,6 +395,9 @@ func validateNumericParams(params map[string]float64) error {
 	if v, ok := params["lon_0"]; ok && math.Abs(v) > 360 {
 		return fmt.Errorf("proj: +lon_0=%v 出界 [-360,360]", v)
 	}
+	if v, ok := params["to_meter"]; ok && !(v > 0) {
+		return fmt.Errorf("proj: +to_meter=%v 必须 > 0(每单位多少米)", v)
+	}
 	return nil
 }
 
@@ -380,7 +419,11 @@ func (c *CRS) EPSG() int {
 			return code
 		}
 	}
-	// 特征比对(容忍参数缺失但语义等同)
+	// 特征比对(容忍参数缺失但语义等同)。非米单位下坐标数值不同,
+	// 不能凭几何特征认成 4326/3857 之类的米制码(latlong 输出是度,不受影响)。
+	if f, ok := paramFloat(c, "to_meter", 1); ok && f != 1 && c.Proj != "latlong" {
+		return 0
+	}
 	if _, isLatlong := knownProj[c.Proj]; isLatlong && c.Proj == "latlong" {
 		if near(c.Ellipsoid.A, 6378137.0) && near(c.Ellipsoid.B, 6378137.0*(1-1/298.257223563)) {
 			return 4326
