@@ -68,7 +68,14 @@ func stereEffectiveK(a, b, lat0, latTs, k0 float64) float64 {
 // newStereKernel mirrors PROJ's stere_setup. k is the effective scale factor
 // (stereEffectiveK), lat0/lon0 are radians, a/b metres.
 func newStereKernel(a, b, lat0, lon0, k float64) *stereKernel {
-	e := math.Sqrt((a*a - b*b) / (a * a))
+	// 与 laea/lcc/merc/tmerc 的内核一致:把 e² 夹到 [0,1)。
+	// 适配层已经拒收 b>a(见 newStere),这里是"内核不产生 NaN"的兜底 ——
+	// 直接开方会让 e 变成 NaN,整条投影链跟着烂掉。
+	e2 := (a*a - b*b) / (a * a)
+	if e2 < 0 {
+		e2 = 0
+	}
+	e := math.Sqrt(e2)
 	q := &stereKernel{a: a, e: e, lat0: lat0, lon0: lon0, k: k}
 	switch {
 	case math.Abs(math.Abs(lat0)-math.Pi/2) < stereEPS10:
@@ -201,7 +208,12 @@ func (q *stereKernel) inverse(x, y float64) (lon, lat float64, ok bool) {
 // reports as "outside projection domain".
 func iterateGeodetic(e, tp, phiL, halfpi, halfe float64) (float64, bool) {
 	if e == 0 {
-		return phiL, true
+		// e=0 是下面迭代式的极限形式:φ = 2·atan(tp) − halfpi。
+		// 不能直接返回 phiL —— 极轴分支里 phiL = π/2 − 2·atan(tp) 是"镜像"
+		// 纬度(球体时反变换会给出 180°−φ,例如 lat=60 回来变 120),
+		// 只有走一遍迭代式才对得上。斜轴/赤道分支的 tp 是 tan(π/4+phiL/2),
+		// 这个式子仍化简为 phiL,行为不变。
+		return 2*math.Atan(tp) - halfpi, true
 	}
 	phi := phiL
 	for i := 0; i < 8; i++ {
@@ -250,20 +262,25 @@ func newStere(c *CRS) (Projection, error) {
 	}
 	lat0, _ := paramFloat(c, "lat_0", 0)
 	lon0, _ := paramFloat(c, "lon_0", 0)
-	latTs, _ := paramFloat(c, "lat_ts", 0)
+	latTs, hasLatTs := paramFloat(c, "lat_ts", 0)
 	k0, _ := paramFloat(c, "k_0", 1)
 	x0, _ := paramFloat(c, "x_0", 0)
 	y0, _ := paramFloat(c, "y_0", 0)
 
 	rLat0, rLon0, rLatTs := geoDegToRad(lat0), geoDegToRad(lon0), geoDegToRad(latTs)
-	// PROJ refuses k_0 != 1 in the polar aspect when lat_ts is not the pole itself
-	// ("lat_ts != lat_0 and k != 1 not supported for Polar Stereographic") — verified
-	// with pyproj 3.8.0. Match that instead of silently folding a scale PROJ rejects.
-	if math.Abs(math.Abs(rLat0)-math.Pi/2) < stereEPS10 &&
-		math.Abs(math.Abs(rLatTs)-math.Pi/2) >= stereEPS10 && k0 != 1 {
-		return nil, fmt.Errorf("proj(stere): 极冠模式 lat_ts=%v 与 k_0=%v 不能同时使用(PROJ 拒收)", latTs, k0)
+	// +lat_ts **缺省** 时 PROJ 直接用 k_0(极轴与斜轴都一样),不能按 lat_ts=0 去
+	// 折一个 0.5 出来 —— pyproj 实测:
+	//   +lat_0=90            → 与 +lat_ts=90 逐位相同
+	//   +lat_0=90 +k=2       → 是 k=1 的两倍(PROJ 不拒收)
+	//   +lat_0=90 +lat_ts=60 +k=2 → PROJ 拒收("lat_ts != lat_0 and k != 1 ...")
+	k := k0
+	if hasLatTs {
+		if math.Abs(math.Abs(rLat0)-math.Pi/2) < stereEPS10 &&
+			math.Abs(math.Abs(rLatTs)-math.Pi/2) >= stereEPS10 && k0 != 1 {
+			return nil, fmt.Errorf("proj(stere): 极冠模式 lat_ts=%v 与 k_0=%v 不能同时使用(PROJ 拒收)", latTs, k0)
+		}
+		k = stereEffectiveK(a, b, rLat0, rLatTs, k0)
 	}
-	k := stereEffectiveK(a, b, rLat0, rLatTs, k0)
 	return &stereProj{
 		crs:    c,
 		kernel: newStereKernel(a, b, rLat0, rLon0, k),

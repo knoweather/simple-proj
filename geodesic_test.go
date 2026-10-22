@@ -147,3 +147,88 @@ func TestGeodesicRoundTrip(t *testing.T) {
 		}
 	}
 }
+
+// ---- 长球体(prolate,f<0)--------------------------------------------------
+//
+// 本库的**投影**构造不出 f<0(Parse 拒收负的 +rf/+f),但 geodesic.go 是通用的
+// Karney 实现,移植进来的 f<0 分支必须验证 —— 否则那部分代码只是"看起来对"。
+// pyproj 的 Geod 接受 f<0,拿它当金标(见 gen_geodesic.py 的 PROLATE)。
+
+type geodProlate struct {
+	Name    string       `json:"name"`
+	A       float64      `json:"a"`
+	F       float64      `json:"f"`
+	Inverse []geodInvRec `json:"inverse"`
+	Direct  []geodDirRec `json:"direct"`
+}
+
+func TestGeodesicProlate(t *testing.T) {
+	_, file, _, _ := runtime.Caller(0)
+	path := filepath.Join(filepath.Dir(file), "xcheck", "geodesic_ref.json")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read geodesic_ref: %v", err)
+	}
+	var r struct {
+		Prolate []geodProlate `json:"prolate"`
+	}
+	if err := json.Unmarshal(raw, &r); err != nil {
+		t.Fatalf("parse geodesic_ref: %v", err)
+	}
+	if len(r.Prolate) == 0 {
+		t.Fatal("geodesic_ref.json 里没有 prolate 段(重跑 python xcheck/gen_geodesic.py)")
+	}
+	for _, c := range r.Prolate {
+		g := newGeod(c.A, c.F)
+		var maxS, maxA, maxP float64
+		for _, v := range c.Inverse {
+			s12, azi1, azi2, ok := g.inverse(v.Lat1, v.Lon1, v.Lat2, v.Lon2)
+			if !ok {
+				t.Fatalf("%s: inverse(%v,%v,%v,%v) 失败", c.Name, v.Lat1, v.Lon1, v.Lat2, v.Lon2)
+			}
+			ds := math.Abs(s12 - v.S12)
+			da := math.Max(angDiffDeg(azi1, v.Azi1), angDiffDeg(azi2, v.Azi2))
+			maxS = math.Max(maxS, ds)
+			maxA = math.Max(maxA, da)
+			if ds > geodDistTol || da > geodAzTol {
+				t.Errorf("%s inverse(%v,%v → %v,%v): Δs12=%.3e m Δazi=%.3e°", c.Name, v.Lat1, v.Lon1, v.Lat2, v.Lon2, ds, da)
+			}
+		}
+		for _, v := range c.Direct {
+			lat2, lon2, azi2, ok := g.direct(v.Lat1, v.Lon1, v.Azi1, v.S12)
+			if !ok {
+				t.Fatalf("%s: direct 失败", c.Name)
+			}
+			dp := math.Max(math.Abs(lat2-v.Lat2), angDiffDeg(lon2, v.Lon2))
+			maxP = math.Max(maxP, dp)
+			if dp > geodAzTol || angDiffDeg(azi2, v.Azi2) > geodAzTol {
+				t.Errorf("%s direct(%v,%v): (%.12f,%.12f) 参照 (%.12f,%.12f)", c.Name, v.Lat1, v.Lon1, lat2, lon2, v.Lat2, v.Lon2)
+			}
+		}
+		t.Logf("%s (a=%g f=%g): %d 反解 Δs12 max %.3e m / Δazi max %.3e°,%d 正解 Δ位置 max %.3e°",
+			c.Name, c.A, c.F, len(c.Inverse), maxS, maxA, len(c.Direct), maxP)
+	}
+}
+
+// TestGeodesicInputGuards 非有限/越界入参走 ok=false,不 panic。
+func TestGeodesicInputGuards(t *testing.T) {
+	g := newGeod(6378137.0, 1/298.257223563)
+	if _, _, _, ok := g.inverse(math.NaN(), 0, 0, 0); ok {
+		t.Error("NaN 纬度应 ok=false")
+	}
+	if _, _, _, ok := g.inverse(0, 0, 91, 0); ok {
+		t.Error("|lat|>90 应 ok=false")
+	}
+	if _, _, _, ok := g.direct(math.NaN(), 0, 0, 1000); ok {
+		t.Error("NaN 入参应 ok=false")
+	}
+	if _, _, _, ok := g.direct(0, 0, 0, math.NaN()); ok {
+		t.Error("NaN 距离应 ok=false")
+	}
+	// 极点:不 panic,给出 ±90。输入距离是四分之一子午线的近似值
+	// (精确值 10001965.729312722),所以纬度门放宽到 1e-7 度。
+	lat2, _, _, ok := g.direct(0, 0, 0, 10001965.729312722)
+	if !ok || math.Abs(lat2-90) > 1e-7 {
+		t.Errorf("沿子午线走到北极应得 90, got %.12f (ok=%v)", lat2, ok)
+	}
+}

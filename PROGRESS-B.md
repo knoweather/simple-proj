@@ -342,6 +342,31 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
   开后门。** 行为正确性由对拍保证(21×36 sweep + 9 套 golden 网格 + 148 条大地线
   + 336 点 WKT),不是由语句覆盖率保证。
 
+
+- 2026-10-22 **[覆盖率 95% → 98.6%] 顺带挖出 stere 两个真 bug(用户:"需要 做完")**。
+  这轮不是刷数字,是"为了覆盖冷路径,必须先把它的行为说清楚",结果说清了两个错的:
+  1. **球面极射赤面反变换给出 180°−φ**(impl_stere.go `iterateGeodetic`):
+     e==0 时直接返回 phiL,而极轴分支的 phiL = π/2 − 2·atan(tp) 是镜像纬度
+     (lat=60 反算回来变 120)。椭球走迭代式看不出来,golden/sweep 又只有椭球极轴,
+     所以从 day0 一直没暴露。修法:e==0 时返回 `2·atan(tp) − halfpi`(迭代式的
+     极限形式),斜轴/赤道分支化简后仍是 phiL,行为不变。
+  2. **`+lat_0=90` 不给 `+lat_ts` 时多乘了 0.5**:`newStere` 把缺省的 lat_ts=0
+     喂给 `stereEffectiveK`,折出一个 0.5 的 k。pyproj 实测:缺省 lat_ts 时
+     PROJ 直接用 k_0(`+lat_0=90` 与 `+lat_ts=90` 逐位相同;`+lat_0=90 +k=2` 是
+     k=1 的两倍且**不**拒收)。改为 hasLatTs 时才走 effectiveK,那条"lat_ts≠90
+     且 k≠1 拒收"的守卫也只在显式给 lat_ts 时生效。
+  - 这两条都在**球体**与**缺省参数**上 —— 正是 golden/sweep 的模式盲区
+    (与 C#15 的 stere 非极轴反向 bug 同源:fixture 每个投影只覆盖一种模式)。
+  - 覆盖率的推进手段:prolate(f<0)大地线参照(pyproj 的 Geod 支持 f<0,补了
+    79×2 反解 + 79×2 正解,Δs12 ≤ 3.7e-9 m —— 那些 f<0 分支终于有金标了);
+    亚米级短线与极点正解(压 inverseStart 的 shortline / position 的 cbet2==0);
+    新增 `coverage_extra_test.go`(WKT 词法错误 13 例、各投影域外、内核 b>a 夹
+    e²、构造器第二道守卫、nil 守卫、矩阵奇异兜底、球体 tmerc/stere 全方面)。
+  - 剩余 38 条(1.4%):geodesic 12(Newton 二分兜底、赤道退化、角度边界)、
+    stere 7(内核 NaN 守卫 + 迭代不收敛)、geolib 3、laea/tmerc/wkt 各 3、
+    aeqd 2(大地线不可能失败)、lcc/crs/merc/transform 各 1-2。全是"要么输入
+    构造不出来,要么只能白盒直接调内部函数"的分支。
+
 ## HANDOVER(下个会话可直接接)
 
 1. **B 轨全部结案**:五投影(stere/laea/lcc/merc/tmerc)+ geolib + golden 生成器 +

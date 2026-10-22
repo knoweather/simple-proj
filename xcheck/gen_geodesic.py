@@ -75,6 +75,15 @@ INVERSE_EDGES = [
     (-33.9, 151.2, 51.5, -0.13),  # Sydney -> London
     (35.7, 139.7, -33.9, 151.2),  # Tokyo -> Sydney
     (0, 179.999, 0, -179.999),    # across the antimeridian
+    # 近对跖但 lon12 != 180:压 astroid 分支(y=0 且 x 落在"近切割线"一带)
+    (45, 0, -45, 179.5),
+    (0.5, 0, -0.5, 179.9),
+    (89, 0, -89, 179.9),
+    (0, 0, 0.0001, 179.9999),
+    (30, 0, -30, 179.99),
+    # 亚米级短线:走 inverseStart 的 "really short line" 分支(etol2 ≈ 0.23 m)
+    (40, -75, 40, -75.0000005),
+    (0, 0, 0.0000001, 0.0000002),
 ]
 
 DIRECT_EDGES = [
@@ -87,9 +96,20 @@ DIRECT_EDGES = [
     (0, 179.5, 90, 200000.0),     # across the antimeridian
     (10, 20, -90, 1234567.89),
     (0, 0, 180, 20003931.458625), # half the equator
+    # 从北极沿子午线走到南极:position 里 cbet2 == 0 的退化分支
+    (90, 0, 180, 20003931.458625),
+    (90, 0, 180, 10001965.729312722),
 ]
 
 N_RANDOM = 60
+
+# 长球体(prolate,f<0)。本库的**投影**构造不出 f<0(Parse 拒收 +rf/+f 负值),
+# 但大地线求解器是通用 Karney 实现,这些分支被移植进来就得验证 —— 否则那部分
+# 代码只是"看起来对"。pyproj 的 Geod 接受 f<0,正好当金标。
+PROLATE = [
+    {"name": "f-0.01", "a": 6378137.0, "f": -0.01},
+    {"name": "f-0.02", "a": 6378137.0, "f": -0.02},
+]
 
 
 def main():
@@ -144,6 +164,45 @@ def main():
         "inverse": inverse,
         "direct": direct,
     }
+
+    # 长球体:同一套结构化点 + 随机点(含近对跖,专门压 astroid 分支)
+    prolate = []
+    for spec in PROLATE:
+        g = Geod(a=spec["a"], f=spec["f"])
+        inv, dirs = [], []
+        for lat1, lon1, lat2, lon2 in INVERSE_EDGES:
+            az1, az2, s12 = g.inv(lon1, lat1, lon2, lat2)
+            if not all(math.isfinite(v) for v in (az1, az2, s12)):
+                continue
+            inv.append({"lat1": lat1, "lon1": lon1, "lat2": lat2, "lon2": lon2,
+                        "s12": s12, "azi1": az1, "azi2": norm180(az2 + 180.0)})
+            lon3, lat3, az3 = g.fwd(lon1, lat1, az1, s12)
+            if all(math.isfinite(v) for v in (lon3, lat3, az3)):
+                dirs.append({"lat1": lat1, "lon1": lon1, "azi1": az1, "s12": s12,
+                             "lat2": lat3, "lon2": lon3, "azi2": norm180(az3 + 180.0)})
+        rng2 = LCG(20261023)
+        for _ in range(N_RANDOM):
+            lat1 = rng2.uniform(-89.5, 89.5)
+            lon1 = rng2.uniform(-180.0, 180.0)
+            if rng2.next() < 0.4:
+                lat2 = max(-89.9, min(89.9, -lat1 + rng2.uniform(-1.5, 1.5)))
+                lon2 = norm180(lon1 + 180.0 + rng2.uniform(-1.5, 1.5))
+            else:
+                lat2 = rng2.uniform(-89.5, 89.5)
+                lon2 = norm180(rng2.uniform(-180.0, 180.0))
+            az1, az2, s12 = g.inv(lon1, lat1, lon2, lat2)
+            if not all(math.isfinite(v) for v in (az1, az2, s12)):
+                continue
+            inv.append({"lat1": lat1, "lon1": lon1, "lat2": lat2, "lon2": lon2,
+                        "s12": s12, "azi1": az1, "azi2": norm180(az2 + 180.0)})
+            lon3, lat3, az3 = g.fwd(lon1, lat1, az1, s12)
+            if all(math.isfinite(v) for v in (lon3, lat3, az3)):
+                dirs.append({"lat1": lat1, "lon1": lon1, "azi1": az1, "s12": s12,
+                             "lat2": lat3, "lon2": lon3, "azi2": norm180(az3 + 180.0)})
+        prolate.append({"name": spec["name"], "a": spec["a"], "f": spec["f"],
+                        "inverse": inv, "direct": dirs})
+
+    out["prolate"] = prolate
 
     path = os.path.join(out_dir, "geodesic_ref.json")
     with open(path, "w", encoding="utf-8") as f:
