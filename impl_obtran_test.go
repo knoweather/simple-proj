@@ -9,6 +9,7 @@ package proj
 
 import (
 	"encoding/json"
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -427,5 +428,64 @@ func TestObTranConstructorGuards(t *testing.T) {
 	p := mustProj(t, "+proj=ob_tran +o_proj=longlat +o_lat_p=30 +ellps=WGS84")
 	if c := p.CRS(); c == nil || c.Proj != "ob_tran" {
 		t.Error("CRS() 应回传绑定的 CRS")
+	}
+}
+
+// TestObTranConcurrent shares one obTranProj instance between goroutines and
+// requires Forward/Inverse to stay bit-identical to the serial result. ob_tran
+// is not part of the sweep fixture (it has its own obtran_ref.json), so the
+// generic TestThreadSafety cannot cover it — this test closes that gap for the
+// 5 reference configurations in obTranRef (north/south pole, o_lon_p shift,
+// ECMWF pole, shifted pole longitude).
+func TestObTranConcurrent(t *testing.T) {
+	const workers = 8
+	for name, c := range obTranRef {
+		p := mustProj(t, c.crs)
+		type ref struct{ x, y, lon, lat float64 }
+		refs := make([]ref, len(c.pts))
+		for i, v := range c.pts {
+			x, y, err := p.Forward(v.lon, v.lat)
+			if err != nil {
+				t.Fatalf("%s Forward(%v,%v): %v", name, v.lon, v.lat, err)
+			}
+			lon, lat, err := p.Inverse(x, y)
+			if err != nil {
+				t.Fatalf("%s Inverse(%v,%v): %v", name, x, y, err)
+			}
+			refs[i] = ref{x, y, lon, lat}
+		}
+		errs := make(chan error, workers)
+		for w := 0; w < workers; w++ {
+			go func() {
+				for n := 0; n < 200; n++ {
+					for i, v := range c.pts {
+						x, y, err := p.Forward(v.lon, v.lat)
+						if err != nil {
+							errs <- fmt.Errorf("%s Forward(%v,%v): %w", name, v.lon, v.lat, err)
+							return
+						}
+						if x != refs[i].x || y != refs[i].y {
+							errs <- fmt.Errorf("%s Forward(%v,%v) 并发漂移", name, v.lon, v.lat)
+							return
+						}
+						lon, lat, err := p.Inverse(refs[i].x, refs[i].y)
+						if err != nil {
+							errs <- fmt.Errorf("%s Inverse(%v,%v): %w", name, refs[i].x, refs[i].y, err)
+							return
+						}
+						if lon != refs[i].lon || lat != refs[i].lat {
+							errs <- fmt.Errorf("%s Inverse(%v,%v) 并发漂移", name, refs[i].x, refs[i].y)
+							return
+						}
+					}
+				}
+				errs <- nil
+			}()
+		}
+		for w := 0; w < workers; w++ {
+			if err := <-errs; err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+		}
 	}
 }

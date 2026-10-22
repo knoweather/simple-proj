@@ -62,6 +62,11 @@ func TestRegisterDuplicatePanics(t *testing.T) {
 		if recover() == nil {
 			t.Errorf("重复注册应 panic")
 		}
+		// 查重必须先于写入:失败的注册不得污染全局注册表,否则运行期调用
+		// register 的测试会与并发的 NewProjection 读构成 data race。
+		if _, err := Parse("+proj=latlong +ellps=WGS84"); err != nil {
+			t.Errorf("重复注册 panic 后注册表被污染: %v", err)
+		}
 	}()
 	register("latlong", newLatlong) // latlong 已在 impl_latlong.go init 注册
 }

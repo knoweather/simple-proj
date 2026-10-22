@@ -73,6 +73,17 @@ func loadSweep(t *testing.T) sweepFile {
 	return s
 }
 
+// sweepNames is the single list of sweep cases consumed by both TestSweepExtra
+// and TestThreadSafety. Keeping it here means a newly added projection (or a
+// newly added case such as eqc / geos_x / geos_y / merc_km) is covered by the
+// concurrency regression at the same time as the numeric one — the two lists
+// used to drift apart, which left latlong / eqc / geos / merc_km / utm_south
+// untested concurrently.
+var sweepNames = []string{"latlong", "eqc", "geos_x", "geos_y", "stere",
+	"stere_eq", "stere_obl", "laea", "laea_eq", "laea_np", "laea_sp",
+	"lcc", "merc", "tmerc", "aeqd_np", "aeqd_sp", "aeqd_eq", "aeqd_obl",
+	"aeqd_sph", "utm", "utm_south", "merc_km"}
+
 // sweepInvTol is the C#9 inverse relative floor: extreme probes (1e9 m) have a
 // radian-longitude ulp far above the 1e-9 deg absolute gate.
 func sweepInvTol(x float64) float64 {
@@ -85,10 +96,7 @@ func TestSweepExtra(t *testing.T) {
 	s := loadSweep(t)
 	t.Logf("sweep generator: %s (%s)", s.Generator, s.Generated)
 
-	for _, name := range []string{"latlong", "eqc", "geos_x", "geos_y", "stere",
-		"stere_eq", "stere_obl", "laea", "laea_eq", "laea_np", "laea_sp",
-		"lcc", "merc", "tmerc", "aeqd_np", "aeqd_sp", "aeqd_eq", "aeqd_obl",
-		"aeqd_sph", "utm", "utm_south", "merc_km"} {
+	for _, name := range sweepNames {
 		c, ok := s.Cases[name]
 		if !ok {
 			t.Fatalf("sweep case %q missing", name)
@@ -186,16 +194,16 @@ func TestSweepExtra(t *testing.T) {
 
 // TestThreadSafety smoke-checks the frozen "all Projections are immutable and
 // thread-safe" contract (§2.5): one instance hammered from many goroutines must
-// return exactly the serial results. The race detector itself needs cgo
-// (unavailable on this Windows box); this test still catches shared-state bugs
-// and panics on any platform, and `go test -race` on linux CI completes it.
+// return exactly the serial results. It walks sweepNames (all sweep cases,
+// including eqc / geos_x / geos_y / merc_km / utm_south / latlong), so a new
+// projection cannot quietly miss the concurrency regression. The race detector
+// itself needs cgo and runs in CI (ubuntu, .github/workflows/ci.yml); without it
+// this test still catches shared-state bugs and panics on any platform.
 func TestThreadSafety(t *testing.T) {
 	s := loadSweep(t)
 	const workers = 8
 
-	for _, name := range []string{"stere", "stere_eq", "stere_obl", "laea",
-		"laea_eq", "laea_np", "laea_sp", "lcc", "merc", "tmerc",
-		"aeqd_obl", "aeqd_np", "utm"} {
+	for _, name := range sweepNames {
 		c := s.Cases[name]
 		crs, err := Parse(c.CRS)
 		if err != nil {

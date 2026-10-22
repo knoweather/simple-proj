@@ -25,6 +25,9 @@ func register(name string, factory func(*CRS) (Projection, error)) {
 	if name == "" {
 		panic("proj: register: empty projection name")
 	}
+	// 先查重、再写入。测试会在运行期调用本函数验证上面两条 panic 分支
+	// (proj_internal_test.go);一旦把写入挪到查重之前,重复注册就会污染
+	// 全局注册表,并与并发的 NewProjection 读构成 data race。顺序是契约。
 	if _, dup := factories[name]; dup {
 		panic("proj: register: duplicate projection " + name)
 	}

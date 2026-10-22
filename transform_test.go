@@ -178,7 +178,8 @@ func TestTransformBatch(t *testing.T) {
 }
 
 // TestTransformConcurrent Transformer 不可变,多个 goroutine 共享同一实例
-// 必须与串行结果逐位一致(与 TestThreadSafety 同口径;-race 待 linux CI)。
+// 必须与串行结果逐位一致(与 TestThreadSafety 同口径;-race 由 CI 的
+// ubuntu job 覆盖,见 .github/workflows/ci.yml)。
 func TestTransformConcurrent(t *testing.T) {
 	tr := mustTransformer(t, "EPSG:4326", dhdn7)
 	pts := [][2]float64{{13.4, 52.5}, {0, 0}, {-60, -45}, {140, 10}}

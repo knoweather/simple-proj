@@ -157,6 +157,11 @@ crs.String()   // "+proj=tmerc +k=0.9996 +lat_0=0 +lon_0=105 +ellps=WGS84"
 内部 `Params` 里才是归一后的形态(`k`/`k0` → `k_0`、缺省补 `k_0=1` 与
 `lat_0/lon_0/x_0/y_0=0`),可以用 `crs.Params["k_0"]` 取。
 
+`CRS` 构造后只读：`Params` / `UnknownParams` / `Towgs84` 会被
+`Projection`、`Transformer` 共享引用，并发改写会与 `Units()` / `EPSG()` /
+`Info()` / `String()` 的读取构成 data race。需要改参数就先深拷贝一份 CRS
+（见 `crs.go` 里 `CRS` 的注释）。
+
 **并发共享一个 Projection**（无状态、不可变）：
 
 ```go
@@ -314,9 +319,10 @@ GOOS=linux GOARCH=arm64 go build ./... # 交叉编译（无 cgo）
 
 - **golden 对拍**：`golden_*.json`（pyproj 生成）由各投影的 `*_test.go` 消费；
 - **扩展 sweep**：`TestSweepExtra` 走完整公共 API 对拍独立点集；
-- **线程安全**：`TestThreadSafety` 8 goroutine 并发同一实例，结果与串行逐位一致
-  （`-race` 需 cgo，Windows 本机不可用，留待 linux CI；内核为不可变常量构造，
-  竞争由设计排除）；
+- **线程安全**：`TestThreadSafety` 覆盖全部 22 个 sweep 用例，`TestObTranConcurrent`
+  另测 ob_tran；8 goroutine 并发同一实例，结果与串行逐位一致。`-race` 在 CI 的
+  ubuntu job 上跑（`.github/workflows/ci.yml`，cgo+gcc）；内核为不可变常量构造，
+  竞争由设计排除；
 - **批量语义**：D2 域外逐点 NaN + 批末 ErrDomain、坏输入整批失败；
 - **大地线**：`TestGeodesicInverseParity` / `TestGeodesicDirectParity` 对拍
   `xcheck/geodesic_ref.json`（含近对跖、极区、8 m 短线）；

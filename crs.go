@@ -7,7 +7,14 @@ import (
 	"strings"
 )
 
-// CRS 投影定义。零值不可用,只能由 Parse 构造。不可变。
+// CRS 投影定义。零值不可用,只能由 Parse 构造。
+//
+// 不可变是并发安全的前提:Parse 返回后,Params / UnknownParams / Towgs84
+// 都不得再修改。Projection 与 Transformer 持有的是同一个 *CRS 指针
+// (见 Projection.CRS、Transformer.From/To),而 Units/EPSG/Info/String
+// 等读取路径是调用时现读这些字段 —— 并发改写会与它们构成 data race,
+// Go 运行时还会直接 fatal("concurrent map read and map write")。
+// 需要可改的副本请自行深拷贝后再改,不要原地改 Parse 的返回值。
 type CRS struct {
 	Proj          string             // "geos" 等(sans "+"、lowercased)
 	Params        map[string]float64 // 归一化后的数值参数(lon_0/lat_0/k_0/h/lat_1/lat_2/x_0/y_0/lat_ts...)
