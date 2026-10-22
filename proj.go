@@ -49,9 +49,19 @@ type Projection interface {
 // (含 x_0/y_0),对外坐标 = 米 / to_meter —— 与 PROJ 的 pj_fwd 收尾一致
 // (pyproj 实测:+units=km +x_0=500000 的输出是 1113.19+500,即 x_0 也按米
 // 参与后再整体换算)。latlong 输出是度,不做换算(PROJ 同样忽略)。
-func (c *CRS) NewProjection() (Projection, error) {
+//
+// 带 +towgs84 的 CRS 在这里**拒收**:单个投影只在自己的椭球上映射,基准平移
+// 根本没有落脚点,静默忽略就是悄悄算错。要做基准变换请走 NewTransformer
+// (transform.go),它才会把 towgs84 当 Helmert 用起来。
+func (c *CRS) NewProjection() (Projection, error) { return c.newProjection(false) }
+
+// newProjection allowDatum=true 时放行 +towgs84(仅供 NewTransformer 内部使用)。
+func (c *CRS) newProjection(allowDatum bool) (Projection, error) {
 	if c == nil || c.Proj == "" {
 		return nil, errors.New("proj: 零值 CRS 不可用,只能由 Parse 构造")
+	}
+	if !allowDatum && hasTowgs84(c) {
+		return nil, fmt.Errorf("proj: %s 带 +towgs84 基准变换,单投影无法表达(投影只在自己的椭球上映射);CRS→CRS 请用 NewTransformer", c.Proj)
 	}
 	factory, ok := factories[c.Proj]
 	if !ok {

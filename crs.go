@@ -13,7 +13,11 @@ type CRS struct {
 	Params        map[string]float64 // 归一化后的数值参数(lon_0/lat_0/k_0/h/lat_1/lat_2/x_0/y_0/lat_ts...)
 	Ellipsoid     Ellipsoid
 	UnknownParams map[string]string // 未识别的参数原样保留(只字符串值)
-	projString    string            // 原始串,往返用
+	// Towgs84 +towgs84 的 3 参或 7 参(EPSG 9603/9606,position vector 约定),
+	// 空 = 无基准变换信息。单投影(NewProjection)不消费它,只有
+	// NewTransformer 的 CRS→CRS 转换会用到(见 transform.go)。
+	Towgs84    []float64
+	projString string // 原始串,往返用
 }
 
 // ---- 参数命名空间(归一化口径,PROJ 兼容拼写) --------------------------------
@@ -86,9 +90,10 @@ var angularKeys = map[string]bool{
 // unsupportedParamReason 本库「认识语义但没实现」的参数 → Parse 直接报错。
 //
 // 判据不是「我们认不认识这个键」,而是「忽略它会不会让结果算错」:
-//   - +pm/+axis/+nadgrids/+towgs84(非零)/+datum(非 WGS84)/+R_* 族/+geoc/
+//   - +pm/+axis/+nadgrids/+datum(非 WGS84)/+R_* 族/+geoc/
 //     +over/+geoidgrids 在 PROJ 里都会改变输出,静默丢弃 = 悄悄算错,故拒收;
-//     (+units/+to_meter 已支持,见 unitToMeter 与 NewProjection 的换算层)
+//     (+units/+to_meter 已支持,见 unitToMeter 与 NewProjection 的换算层;
+//     +towgs84 收进 CRS.Towgs84,只供 NewTransformer 做基准变换)
 //   - +sweep 只在 geos 有意义,其他投影下 PROJ 同样忽略,不会改变输出,故不在此表
 //     (仍由 geos 的适配层消费)。
 //
@@ -108,7 +113,6 @@ var unsupportedParamReason = map[string]string{
 	"r_h":        "调和平均半径",
 	"r_lat_a":    "authalic 纬度半径",
 	"r_lat_g":    "几何纬度半径",
-	"towgs84":    "Helmert 7 参基准变换",
 	"datum":      "基准(datum)定义",
 	"init":       "+init= 语法(PROJ 6 起已移除)",
 	"defs":       "proj 定义文件",
@@ -133,21 +137,40 @@ func isNoopParamValue(key, val string) bool {
 		return v == "@null"
 	case "datum":
 		return strings.EqualFold(v, "WGS84") || strings.EqualFold(v, "WGS_1984")
-	case "towgs84":
-		fields := strings.Split(v, ",")
-		if len(fields) != 3 && len(fields) != 7 {
-			return false
-		}
-		for _, f := range fields {
-			n, err := strconv.ParseFloat(strings.TrimSpace(f), 64)
-			if err != nil || n != 0 {
-				return false
-			}
-		}
-		return true
 	}
 	return false
 }
+
+// parseTowgs84 解析 +towgs84=dx,dy,dz[,rx,ry,rz,s](3 或 7 个数)。
+// 单位:平移米、旋转角秒、尺度 ppm(EPSG 9603/9606)。
+func parseTowgs84(val string) ([]float64, error) {
+	fields := strings.Split(val, ",")
+	if len(fields) != 3 && len(fields) != 7 {
+		return nil, fmt.Errorf("proj: +towgs84=%q 需 3 或 7 个数值", val)
+	}
+	out := make([]float64, len(fields))
+	for i, f := range fields {
+		v, err := strconv.ParseFloat(strings.TrimSpace(f), 64)
+		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {
+			return nil, fmt.Errorf("proj: +towgs84 第 %d 项 %q 不是有效数字", i+1, f)
+		}
+		out[i] = v
+	}
+	return out, nil
+}
+
+// allZero 全零 towgs84 等价于无变换(PROJ 同义)。
+func allZero(v []float64) bool {
+	for _, x := range v {
+		if x != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// hasTowgs84 是否带非零基准参数。
+func hasTowgs84(c *CRS) bool { return c != nil && len(c.Towgs84) > 0 }
 
 // rejectUnsupportedParam 对「未实现语义」的键给出可执行的报错文案。
 func rejectUnsupportedParam(key, val string) error {
@@ -268,7 +291,11 @@ func parseProjString(s string) (*CRS, error) {
 		}
 		switch {
 		case key == "proj":
-			canonical, known := knownProj[strings.ToLower(strings.TrimSpace(val))]
+			name := strings.ToLower(strings.TrimSpace(val))
+			if name == "pipeline" || name == "concatenated_operation" {
+				return nil, fmt.Errorf("proj: 不支持 +proj=%s 操作链;两个 CRS 之间的转换请用 NewTransformer(transform.go)", name)
+			}
+			canonical, known := knownProj[name]
 			if !known {
 				return nil, fmt.Errorf("proj: 未知 +proj=%q(v1 冻结清单见 PROGRESS-A 决策 D4)", val)
 			}
@@ -282,6 +309,15 @@ func parseProjString(s string) (*CRS, error) {
 			}
 			unitsName = name
 			crs.UnknownParams["units"] = name
+		case key == "towgs84":
+			tp, err := parseTowgs84(val)
+			if err != nil {
+				return nil, err
+			}
+			if !allZero(tp) {
+				crs.Towgs84 = tp
+			}
+			crs.UnknownParams[key] = val
 		case knownNumericKeys[key]:
 			num, err := parseParamNumber(key, val)
 			if err != nil {

@@ -231,14 +231,12 @@ func TestParseUnknownParams(t *testing.T) {
 // 静默忽略 +pm/+towgs84/+nadgrids 之类会让坐标算错却不报错(本次改造的核心)。
 func TestParseRejectsUnsupportedSemantics(t *testing.T) {
 	cases := []string{
-		"+proj=merc +pm=paris +ellps=WGS84",              // 本初子午线
-		"+proj=merc +pm=paris",                           // 缺值同罪
-		"+proj=merc +axis=neu +ellps=WGS84",              // 轴序
-		"+proj=merc +nadgrids=conus +ellps=WGS84",        // 网格基准
-		"+proj=merc +towgs84=1,2,3 +ellps=WGS84",         // Helmert 非零
-		"+proj=merc +towgs84=0,0,0,1,2,3,4 +ellps=WGS84", // 7 参非零
-		"+proj=longlat +datum=NAD27",                     // 需要基准变换
-		"+proj=merc +R_A +ellps=WGS84",                   // authalic 半径旗标
+		"+proj=merc +pm=paris +ellps=WGS84",       // 本初子午线
+		"+proj=merc +pm=paris",                    // 缺值同罪
+		"+proj=merc +axis=neu +ellps=WGS84",       // 轴序
+		"+proj=merc +nadgrids=conus +ellps=WGS84", // 网格基准
+		"+proj=longlat +datum=NAD27",              // 需要基准变换
+		"+proj=merc +R_A +ellps=WGS84",            // authalic 半径旗标
 		"+proj=merc +R_V +ellps=WGS84",
 		"+proj=merc +over +ellps=WGS84", // over-range
 		"+proj=merc +geoc +ellps=WGS84", // 地心纬度
@@ -249,6 +247,39 @@ func TestParseRejectsUnsupportedSemantics(t *testing.T) {
 		if _, err := Parse(s); err == nil {
 			t.Errorf("Parse(%q) 应报错(有语义但未实现,不许静默忽略)", s)
 		}
+	}
+}
+
+// TestTowgs84NeedsTransformer +towgs84 现在由 Parse 收下(供 NewTransformer 做
+// 基准变换),但**单投影**必须拒收 —— 投影只在自己椭球上映射,平移无处安放。
+func TestTowgs84NeedsTransformer(t *testing.T) {
+	cases := []string{
+		"+proj=merc +towgs84=1,2,3 +ellps=WGS84",
+		"+proj=merc +towgs84=0,0,0,1,2,3,4 +ellps=WGS84",
+		"+proj=longlat +ellps=bessel +towgs84=598.1,73.7,418.2",
+	}
+	for _, s := range cases {
+		c, err := Parse(s)
+		if err != nil {
+			t.Fatalf("Parse(%q) 应收下 towgs84: %v", s, err)
+		}
+		if len(c.Towgs84) != 3 && len(c.Towgs84) != 7 {
+			t.Errorf("%q: Towgs84 = %v, want 3 或 7 项", s, c.Towgs84)
+		}
+		if _, err := c.NewProjection(); err == nil {
+			t.Errorf("%q: 单投影带 towgs84 应报错", s)
+		}
+	}
+	// 全零 towgs84 = 无变换,单投影照常可用
+	c, err := Parse("+proj=merc +towgs84=0,0,0 +ellps=WGS84")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Towgs84 != nil {
+		t.Errorf("全零 towgs84 应视为无基准参数, got %v", c.Towgs84)
+	}
+	if _, err := c.NewProjection(); err != nil {
+		t.Errorf("全零 towgs84 不该妨碍单投影: %v", err)
 	}
 }
 

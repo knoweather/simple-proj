@@ -827,9 +827,11 @@ type geodLine struct {
 	C1a, C1pa, C3a [geodNC]float64
 }
 
-// newGeodLine 对应 geod_lineinit()(caps 固定为距离+经纬度+方位)。
-func (g *geod) newLine(lat1, lon1, azi1 float64) *geodLine {
-	l := &geodLine{g: g, lon1: lon1, f1: g.f1, b: g.b}
+// initLine 对应 geod_lineinit()(caps 固定为距离+经纬度+方位)。
+// 写成「填调用方给的栈上结构」而不是 new 一个指针:direct() 在批量循环里
+// 每点调用一次,返回指针会每点一次堆分配(实测 1e6 点 1e6 allocs)。
+func (g *geod) initLine(l *geodLine, lat1, lon1, azi1 float64) {
+	*l = geodLine{g: g, lon1: lon1, f1: g.f1, b: g.b}
 	lat1 = geodLatFix(lat1)
 	azi1 = geodAngNormalize(azi1)
 	salp1, calp1 := geodSincosd(geodAngRound(azi1))
@@ -868,7 +870,6 @@ func (g *geod) newLine(lat1, lon1, azi1 float64) *geodLine {
 	g.C3f(eps, l.C3a[:])
 	l.A3c = -g.f * l.salp0 * g.A3f(eps)
 	l.B31 = geodSinCosSeries(true, l.ssig1, l.csig1, l.C3a[:], geodOrder-1)
-	return l
 }
 
 // position 对应 geod_genposition() 的距离模式:返回终点经纬度与方位(度)。
@@ -924,7 +925,8 @@ func (g *geod) direct(lat1, lon1, azi1, s12 float64) (lat2, lon2, azi2 float64, 
 		math.Abs(lat1) > 90 {
 		return 0, 0, 0, false
 	}
-	l := g.newLine(lat1, lon1, azi1)
+	var l geodLine
+	g.initLine(&l, lat1, lon1, azi1)
 	lat2, lon2, azi2 = l.position(s12)
 	return lat2, lon2, azi2, true
 }

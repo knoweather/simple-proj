@@ -157,3 +157,12 @@ func TestBatchPerf1e6(t *testing.T) {
 		t.Skipf("最慢 %v 超过 100 ms 预算(载荷波动?), 人工复测", worst)
 	}
 }
+
+// ---- 第 5 轮新增投影(aeqd / utm)-----------------------------------------
+
+func BenchmarkForwardBatchAeqd(b *testing.B) {
+	benchForwardBatch(b, "+proj=aeqd +lat_0=45 +lon_0=10 +ellps=WGS84", "")
+}
+func BenchmarkInverseBatchAeqd(b *testing.B) {
+	benchInverseBatch(b, "+proj=aeqd +lat_0=45 +lon_0=10 +ellps=WGS84", "")
+}
