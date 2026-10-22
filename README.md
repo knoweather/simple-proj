@@ -242,6 +242,11 @@ wg.Wait()
 
 v0.2.0 追加（不冻结）：
 
+- `CRS.IsGeographic()` / `CRS.Units()`：机器可读的坐标系类型与单位
+  （`"degree"` / `"m"` / `"km"` / `"to_meter=1000"`…），等价于 PROJ 的
+  `proj_angular_input` / `proj_degree_output` 那组查询；
+- `CRS.Equals(other)`：两个 CRS 是否算出同一套坐标（比 pyproj 的 `CRS.equals`
+  宽松——不比 datum 名/CRS 名等元数据，因为本库不建模它们）；
 - `ParseWKT(s)` / `Parse(wkt)`：WKT2/WKT1 子集，行为等价于同义 proj 串；
 - `NewTransformer(from, to)` → `Transform(x, y)` / `TransformBatch(xy)`：
   CRS→CRS 转换，`+towgs84` 走 Helmert（3/7 参，WGS84 中转）；

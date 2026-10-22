@@ -516,3 +516,111 @@ func near(a, b float64) bool {
 	const eps = 1e-12
 	return math.Abs(a-b) <= eps*(math.Abs(a)+math.Abs(b)+1)
 }
+
+// ---- 元数据自省(第二轮 goproj 评审的融合,见 PROGRESS-B)----------------------
+//
+// goproj(cgo 包装)里有一组 PROJ 的"输入/输出是什么量"的查询:
+// proj_angular_input / proj_degree_input / proj_angular_output /
+// proj_degree_output。本库的约定是固定的(地理 CRS 收发度、投影 CRS 收发米),
+// 所以不需要那四个函数;但**调用方**仍然需要机器可读地知道"这个 CRS 该喂度
+// 还是米、单位是什么"—— 那是 IsGeographic / Units 要做的事。
+// 另外 pyproj 有 CRS.equals(),本库一直没有,这里补上(结构比较,不查数据库)。
+
+// IsGeographic 是否地理坐标系(本库只有 latlong 一种,收发都是度)。
+func (c *CRS) IsGeographic() bool { return c != nil && c.Proj == "latlong" }
+
+// Units 返回坐标单位(机器可读):
+//   - 地理 CRS 恒为 "degree"(输出度);
+//   - 投影 CRS 为 +units 的名字(m/km/ft/us-ft…),未给时 "m";
+//   - 用 +to_meter 自定义时返回 "to_meter=<值>"。
+//
+// 与 Info().Units 的区别:后者是给人看的("度 → 米"),这个是给代码判断的。
+func (c *CRS) Units() string {
+	if c == nil {
+		return ""
+	}
+	if c.IsGeographic() {
+		return "degree"
+	}
+	if name := paramString(c, "units", ""); name != "" {
+		return name
+	}
+	if f, ok := paramFloat(c, "to_meter", 1); ok && f != 1 {
+		return fmt.Sprintf("to_meter=%g", f)
+	}
+	return "m"
+}
+
+// Equals 判断两个 CRS 是否**算出同一套坐标**(结构比较)。
+//
+// 比较的字段:proj 名、归一化参数(含 to_meter)、椭球、+towgs84,以及会影响
+// 结果的字符串参数(目前只有 geos 的 +sweep)。字符串写法差异(参数顺序、别名、
+// 缺省值省略)不算差异。
+//
+// 与 pyproj 的 CRS.equals 的关系:**本库更宽松**。pyproj 还比 datum 名、CRS 名、
+// ID 等元数据,所以 `EPSG:4326` 与 `+proj=latlong +ellps=WGS84` 在 pyproj 里是
+// False(后者没有 datum 名);本库不建模 datum/名称,两者算出来的坐标完全一致,
+// 因此判 True。这个口径对"要不要跳过这次变换"这类判断更合用;需要元数据级
+// 相等时,请比较 `String()` 或自己带 datum 信息。
+//
+// 不做的事:不查 proj.db、不做基准识别。
+func (c *CRS) Equals(other *CRS) bool {
+	if c == nil || other == nil {
+		return c == other
+	}
+	if c.Proj != other.Proj {
+		return false
+	}
+	if !near(c.Ellipsoid.A, other.Ellipsoid.A) || !near(c.Ellipsoid.B, other.Ellipsoid.B) {
+		return false
+	}
+	// 参数:缺省与显式 0 视为同一件事(各 impl 的 paramFloat 缺省就是 0)
+	for k := range c.Params {
+		if !nearParam(c.Params[k], paramOr(other, k)) {
+			return false
+		}
+	}
+	for k := range other.Params {
+		if !nearParam(other.Params[k], paramOr(c, k)) {
+			return false
+		}
+	}
+	// geos 的 sweep 存在 UnknownParams 里,但它改变结果
+	if paramString(c, "sweep", "y") != paramString(other, "sweep", "y") {
+		return false
+	}
+	// 基准变换参数
+	if len(c.Towgs84) != len(other.Towgs84) {
+		return false
+	}
+	for i := range c.Towgs84 {
+		if math.Abs(c.Towgs84[i]-other.Towgs84[i]) > 1e-12 {
+			return false
+		}
+	}
+	return true
+}
+
+// paramOr 取参数值,缺失时按该参数的**缺省值**处理(与各 impl 的 paramFloat
+// 缺省一致:多数是 0,但 to_meter 的缺省是 1 —— 否则 "+units=m" 与不写单位
+// 会被判成不等)。
+func paramOr(c *CRS, key string) float64 {
+	def := 0.0
+	if key == "to_meter" {
+		def = 1
+	}
+	if v, ok := paramFloat(c, key, def); ok {
+		return v
+	}
+	return def
+}
+
+// nearParam 参数比较:绝对 0 附近用绝对门,其余用相对门(容双精度舍入)。
+func nearParam(a, b float64) bool {
+	d := math.Abs(a - b)
+	if d == 0 {
+		return true
+	}
+	scale := math.Abs(a) + math.Abs(b)
+	return d <= 1e-12*scale || d <= 1e-9
+}

@@ -367,6 +367,35 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
     aeqd 2(大地线不可能失败)、lcc/crs/merc/transform 各 1-2。全是"要么输入
     构造不出来,要么只能白盒直接调内部函数"的分支。
 
+
+- 2026-10-22 **[goproj 二次评审] 融合 IsGeographic/Units/Equals(用户:"本地还有个
+  goproj 是以前写一半的,看看有没有用")**。C#14 那轮已融合 Info() 与 DomainError,
+  这次把 `C:/Users/64517/GolandProjects/goproj`(617 行 cgo 包装)重读了一遍,
+  按"现在有没有用"重新过:
+  - **新融合 3 项**:
+    ① `CRS.IsGeographic()` + `CRS.Units()` —— 对应 goproj 包的
+       `proj_angular_input/proj_degree_input/proj_angular_output/proj_degree_output`
+       那组 PROJ 查询。本库收发约定固定,不需要那四个函数,但调用方(simple-sat 的
+       geom)需要机器可读地知道"喂度还是米"。
+    ② `CRS.Equals()` —— pyproj 有 `CRS.equals`,本库一直没有;goproj 没实现
+       (只注释了 proj_is_equivalent_to)。口径比 pyproj 宽松:只比"算出的坐标是否
+       一致",不比 datum/名称元数据(本库不建模),注释里写明了这个差异。
+    ③ 顺带把 `paramOr` 的缺省表补上(to_meter 缺省 1,否则 `+units=m` 与不写单位
+       会被判不等)。
+  - **仍然不做**(与 C#14 结论一致,理由更新):4D 坐标(goproj 的 `Trans(lat,
+    long, zt...)`;本库 2D 契约够用,且它把 z 也当角度转弧度了 —— 见下)、
+    LogLevel、Area(无 datum 库可选区)、Type 枚举(CRS 分类用 IsGeographic 就够)、
+    `CreateCrsToCrs(source, target string)`(等价于 Parse×2 + NewTransformer,
+    不必再开一个入口)。
+  - **goproj 里不该抄的 6 处**(记账,免得以后回头参考时踩):
+    ① `Trans` 里 `DDToR(z)` —— 高程是米,转弧度是错的;
+    ② `NewGoProjFromMap` 用 map 拼 proj 串 → 参数顺序随机、无校验;
+    ③ `proj_create` 失败不判 nil,后面直接解引用;
+    ④ 每点 `log.Println` + `spew.Dump`,且 `checkCoord` 失败只打日志;
+    ⑤ `Trans` 拿写锁(`sync.RWMutex.Lock`)却只读状态,把所有调用串行化;
+    ⑥ `CreateCrsToCrs` 里 `&area.area` 不判 nil。
+  - 末态:测试 160 → 162,覆盖率仍 98.6%,全绿。
+
 ## HANDOVER(下个会话可直接接)
 
 1. **B 轨全部结案**:五投影(stere/laea/lcc/merc/tmerc)+ geolib + golden 生成器 +
