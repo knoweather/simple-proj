@@ -29,6 +29,8 @@ func TestUnitsScaling(t *testing.T) {
 		{"+proj=merc +a=6378137 +b=6378137 +units=km +x_0=500000", 1613.1949079327358, 2273.0309269876893},
 		// +units 胜过 +to_meter
 		{"+proj=merc +a=6378137 +b=6378137 +units=km +to_meter=2000", 1113.1949079327358, 2273.0309269876893},
+		// +units=m 与 +to_meter=1000 同给:+units 胜,输出仍是米(pyproj 实测)
+		{"+proj=merc +a=6378137 +b=6378137 +units=m +to_meter=1000", 1113194.9079327357, 2273030.9269876895},
 		// 椭球投影同样适用
 		{"+proj=eqc +ellps=WGS84 +units=ft", 3652214.26487118, 7258419.469067037},
 	}

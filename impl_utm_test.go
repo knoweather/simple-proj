@@ -25,6 +25,8 @@ func TestUtmZones(t *testing.T) {
 		{"+proj=utm +zone=50 +south +ellps=GRS80", 500000.0, 13318785.352485882},
 		{"EPSG:32650", 500000.0, 3318785.3525812062},
 		{"EPSG:32750", 500000.0, 13318785.352581207},
+		// 单位层叠加:假东 500000 m → 500 km(pyproj 实测)
+		{"+proj=utm +zone=50 +units=km", 500.0, 3318.785352581206},
 	}
 	for _, c := range cases {
 		crs, err := Parse(c.crs)

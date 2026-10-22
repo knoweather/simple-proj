@@ -76,10 +76,25 @@ func TestEllipsoidTableEllps(t *testing.T) {
 			wantA:     5_000_000, wantB: 5_000_000, wantSphere: true,
 		},
 		{
-			name:      "+ellps 压倒 +a/b 组合(DESIGN 优先级)",
+			// N.B. DESIGN §2.2 原文写的是「+ellps 盖过 +a/b」,但 pyproj 3.8.0 /
+			// PROJ 9.8.1 实测是反过来的:+a/+b/+rf 覆盖 +ellps 打底的形状
+			// (2026-10-22 校准,见 EllipsoidFromParams 注释)。以实测为准。
+			name:      "+a/+b 覆盖 +ellps(PROJ 实测)",
 			params:    map[string]float64{"a": 6378137, "b": 6371000},
 			ellpsName: "sphere",
-			wantA:     6370997, wantB: 6370997, wantSphere: true,
+			wantA:     6378137, wantB: 6371000,
+		},
+		{
+			name:      "+a 覆盖 +ellps 的长半轴,形状仍用 ellps 的 rf",
+			params:    map[string]float64{"a": 6371000},
+			ellpsName: "WGS84",
+			wantA:     6371000, wantB: 6371000 * (1 - 1/298.257223563),
+		},
+		{
+			name:      "+f 在 +ellps 在场时被忽略(PROJ 口径)",
+			params:    map[string]float64{"f": 0.01},
+			ellpsName: "WGS84",
+			wantA:     6378137, wantB: 6378137 * (1 - 1/298.257223563),
 		},
 		{
 			name:   "+b 盖过 +rf(短轴推导顺序)",

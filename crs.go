@@ -120,16 +120,10 @@ var unsupportedParamReason = map[string]string{
 	"guam":       "aeqd 的 Guam 变体(旧式区域投影)",
 }
 
-// benignNoopKeys 接受但确实不影响结果的键(PROJ 变换语境下的无操作)。
-var benignNoopKeys = map[string]bool{
-	"no_defs": true, // proj4 遗留:不读 proj_defs 文件
-	"type":    true, // pyproj/PROJ6+ 的 +type=crs,变换语境无操作
-	"wktext":  true, // 由 WKT 导入时留下的旗标
-}
-
 // isNoopParamValue 判断「有语义的参数」取到的是否恰好是恒等值:
-// +nadgrids=@null(空网格)、+towgs84=0,0,0(零平移)、+datum=WGS84(即本库默认)。
-// 这三种在 PROJ 里等于不做变换,可以安全放行。
+// +nadgrids=@null(空网格)、+datum=WGS84(即本库默认)。这两种在 PROJ 里
+// 等于不做变换,可以安全放行。(+towgs84 有自己的 case,全零时由 allZero 处理;
+// +no_defs/+type/+wktext 之类本来就无操作,走「未知键」的宽容分支。)
 func isNoopParamValue(key, val string) bool {
 	v := strings.TrimSpace(val)
 	switch key {
@@ -282,6 +276,15 @@ func parseProjString(s string) (*CRS, error) {
 			}
 			if knownNumericKeys[key] {
 				return nil, fmt.Errorf("proj: 数值参数 +%s 缺值", key)
+			}
+			// 这几个键裸着写等于没说,PROJ 也报错(pyproj 实测),不能静默放行
+			switch key {
+			case "ellps":
+				return nil, fmt.Errorf("proj: +ellps 必须带椭球名(+ellps=WGS84)")
+			case "units":
+				return nil, fmt.Errorf("proj: +units 必须带单位名(+units=m)")
+			case "towgs84":
+				return nil, fmt.Errorf("proj: +towgs84 必须带 3 或 7 个数值(+towgs84=dx,dy,dz[,rx,ry,rz,s])")
 			}
 			if _, bad := unsupportedParamReason[key]; bad {
 				return nil, rejectUnsupportedParam(key, "")

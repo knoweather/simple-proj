@@ -46,14 +46,24 @@ var ellpsRefTable = map[string]ellpsRef{
 var wgs84Ref = ellpsRef{6378137.0, 298.257223563, "默认 WGS 84"}
 
 // EllipsoidFromParams 由参数组合推导椭球(结构冻结 §2.2 签名)。
-// 组合与优先级(DESIGN §2.2,同 PROJ 约定):
 //
-//	+R > +ellps=名 > +a/+b 组合 > 默认 WGS84
+// 优先级(**按 pyproj 3.8.0 / PROJ 9.8.1 实测校准**,不是 DESIGN 原文的
+// 「+ellps 盖过 +a/+b」):
 //
-// 参数键(已在 Parse 时归入 CRS.Params): +a/+b/+rf/+f/+es/+R;
-// 短轴推导优先级 +b > +rf > +f > +es(PROJ 语义);仅给 +a 或 +rf=0 视作正球体。
-// 零参数零名 → 默认 WGS84。发现矛盾组合(短轴>长轴、e²∉[0,1)、负半径等)
-// 一律 fail-loud 返回 error。
+//	+R > (+b / +rf 覆盖) > +ellps 提供默认形状 > +a 覆盖长半轴 > 默认 WGS84
+//
+// 实测依据(2026-10-22,pyproj):
+//
+//	+ellps=WGS84 +a=6371000            → a=6371000, b 按 WGS84 的 rf 推
+//	+ellps=WGS84 +b=6371000            → a=6378137, b=6371000
+//	+ellps=WGS84 +rf=300               → a=6378137, b 按 rf=300 推
+//	+ellps=WGS84 +f=0.01 / +es=0.01    → **仍给 WGS84 的 b**(+f/+es 被忽略)
+//	+b=6371000(无 +a)                → 报错 "major axis is not given"
+//
+// 也就是说:+ellps 只是给 a/rf 打底,+a/+b/+rf 都能覆盖它;而 +f/+es 只在
+// **没有 +ellps** 时才参与推导(PROJ 的实现顺序如此)。参数键已在 Parse 时
+// 归入 CRS.Params:+a/+b/+rf/+f/+es/+R。零参数零名 → 默认 WGS84。
+// 矛盾组合(短轴>长轴、e²∉[0,1)、负半径等)一律 fail-loud。
 func EllipsoidFromParams(params map[string]float64, ellpsName string) (Ellipsoid, error) {
 	get := func(key string) (float64, bool) {
 		v, ok := params[key]
@@ -68,28 +78,35 @@ func EllipsoidFromParams(params map[string]float64, ellpsName string) (Ellipsoid
 		return newEllipsoid(r, r)
 	}
 
-	// 2) +ellps=名
+	// 2) +ellps 打底(a/rf 作为默认值),+a 可覆盖长半轴
+	aSet := false
+	var a, rf float64
 	if name := strings.ToLower(strings.TrimSpace(ellpsName)); name != "" {
 		ref, ok := ellpsRefTable[name]
 		if !ok {
 			return Ellipsoid{}, fmt.Errorf("proj: 未知椭球 +ellps=%q", ellpsName)
 		}
-		// DESIGN 优先级:+ellps 盖过 +a/b 组合(两者都给时按 ellps)
-		return newEllipsoidFromRF(ref.a, ref.rf)
+		a, rf = ref.a, ref.rf
+		aSet = true
 	}
-
-	// 3) +a/+b 组合
 	if aVal, ok := get("a"); ok {
 		if !finitePositive(aVal) {
 			return Ellipsoid{}, fmt.Errorf("proj: +a=%v 不是有效的长半轴", aVal)
 		}
-		a := aVal
-		// 短轴推导顺序 +b > +rf > +f > +es;全无 → 正球体
+		a, aSet = aVal, true
+	}
+
+	// 3) 有长半轴:短轴按 +b > +rf 覆盖;+f/+es 仅在无 +ellps 时生效
+	if aSet {
 		if bVal, ok := get("b"); ok {
 			return newEllipsoid(a, bVal)
 		}
 		if rfVal, ok := get("rf"); ok {
 			return rfFromFlat(a, rfVal)
+		}
+		if ellpsName != "" {
+			// +ellps 在场:+f/+es 被 PROJ 忽略(pyproj 实测),按 ellps 的 rf 收
+			return newEllipsoidFromRF(a, rf)
 		}
 		if fVal, ok := get("f"); ok {
 			return fFromFlat(a, fVal)
@@ -100,8 +117,8 @@ func EllipsoidFromParams(params map[string]float64, ellpsName string) (Ellipsoid
 		return newEllipsoid(a, a) // 仅 +a:正球体(PROJ 语义)
 	}
 
-	// 4) 孤立短轴/扁率类键(无 +a):PROJ 拒收("major axis is not given",
-	// pyproj 实测 b/es/f/rf 单独给均报错),fail-loud,不静默当 WGS84
+	// 4) 孤立短轴/扁率类键(既无 +a 也无 +ellps):PROJ 拒收
+	// ("major axis is not given",pyproj 实测 b/es/f/rf 单独给均报错)
 	for _, key := range []string{"b", "rf", "f", "es"} {
 		if _, ok := get(key); ok {
 			return Ellipsoid{}, fmt.Errorf("proj: +%s 需要与 +a 同给(缺长半轴)", key)

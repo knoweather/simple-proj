@@ -283,6 +283,25 @@ func TestTowgs84NeedsTransformer(t *testing.T) {
 	}
 }
 
+// TestParseRejectsBareFlags 裸着写的 +ellps/+units/+towgs84 等于没说,
+// PROJ 也报错(pyproj 实测);此前会被静默收进 UnknownParams。
+func TestParseRejectsBareFlags(t *testing.T) {
+	for _, s := range []string{
+		"+proj=merc +ellps",
+		"+proj=merc +ellps=WGS84 +units",
+		"+proj=merc +towgs84 +ellps=WGS84",
+	} {
+		if _, err := Parse(s); err == nil {
+			t.Errorf("Parse(%q) 应报错(裸旗标缺值)", s)
+		}
+	}
+	// +sweep 裸写 PROJ 放行(对 merc 无意义),我们也不报错;
+	// +zone 是数值键,裸写按「缺值」报错(比 PROJ 的静默忽略更严,可接受)
+	if _, err := Parse("+proj=merc +sweep +ellps=WGS84"); err != nil {
+		t.Errorf("+sweep 裸写不该报错: %v", err)
+	}
+}
+
 // TestParseAcceptsNoopValues 恒等值放行:+nadgrids=@null、+towgs84=0,0,0、
 // +datum=WGS84、+type=crs 在 PROJ 里等于不做变换。
 func TestParseAcceptsNoopValues(t *testing.T) {

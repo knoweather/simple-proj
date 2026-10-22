@@ -75,7 +75,4 @@ func (p *utmProj) Inverse(x, y float64) (float64, float64, error) {
 	return p.inner.Inverse(x, y)
 }
 
-// utmZoneLon0 返回 zone 的中央子午线(度),供 EPSG/Info 复用。
-func utmZoneLon0(zone int) float64 { return float64(zone*6 - 183) }
-
 func init() { register("utm", newUtm) }

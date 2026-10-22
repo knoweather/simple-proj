@@ -290,6 +290,23 @@ forwardSph 70.0%,inverseSph 91.7%,newTmerc 81.8%(守卫分支)。其余函数 10
   - 末态门:vet 0 / gofmt 干净 / 全量测试绿 / 覆盖率 **91.9%** / 交叉编译 3 组过。
     sweep 扩到 22 个 case;新增 `xcheck/gen_geodesic.py`、`gen_wkt.py`。
 
+
+- 2026-10-22 **[复审] 五项落地后的复查(用户:"再次检查一下")** —— 逮到 5 处:
+  1. **椭球组合优先级装反**(真 bug,历史遗留):`+ellps=WGS84 +a=6371000` 之前
+     按 DESIGN §2.2 让 ellps 全胜(a=6378137);pyproj 实测是 **+a/+b/+rf 覆盖
+     ellps 打底、+f/+es 在有 ellps 时被忽略**。已按实测重写 `EllipsoidFromParams`
+     并补 3 条用例(含"DESIGN 原文与实测相反"的注记)。
+  2. **裸旗标漏网**:`+ellps` / `+units` / `+towgs84` 不带值时此前静默收进
+     UnknownParams(PROJ 三者都报错)。已在旗标分支显式拒收。
+  3. `transform.go` 的 `isErrDomain` 手写包装换成 `errors.Is`(原实现漏了
+     `fmt.Errorf("%w")` 包装的情形,且是死代码)。
+  4. 清死代码:`utmZoneLon0`、`benignNoopKeys`、`geodesic.go` 里 `_ = a12`/`_ = E`
+     的占位(`a12` 是 PROJ geod_geninverse 的返回值,本库用不到,已连声明一起删)。
+  5. `xcheck/README.md` 补 §2.1:三个新参照集(sweep/geodesic/wkt)的清单与口径。
+  另核对通过:aeqd 极轴 inverse 的超远点(含 lat=-194.6 的外推形态)、ENSEMBLE /
+  GEODCRS 形式的 WKT、`+units=km` 叠加 utm、WKT 前后空白、Info() 的单位显示。
+  末态:全量测试绿 / vet 0 / gofmt 干净 / 覆盖率 **92.2%**。
+
 ## HANDOVER(下个会话可直接接)
 
 1. **B 轨全部结案**:五投影(stere/laea/lcc/merc/tmerc)+ geolib + golden 生成器 +

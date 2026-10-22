@@ -21,6 +21,7 @@ package proj
 //     (WGS84/GRS80 轴),否则报错 —— 否则就成了「把别的基准当 WGS84」的静默错误。
 
 import (
+	"errors"
 	"fmt"
 	"math"
 )
@@ -219,7 +220,7 @@ func (t *Transformer) TransformBatch(xy []float64) ([]float64, error) {
 	for i := 0; i < len(xy); i += 2 {
 		x, y, err := t.Transform(xy[i], xy[i+1])
 		if err != nil {
-			if !isErrDomain(err) {
+			if !errors.Is(err, ErrDomain) {
 				return nil, fmt.Errorf("proj: TransformBatch 第 %d 点: %w", i/2, err)
 			}
 			x, y = math.NaN(), math.NaN()
@@ -231,18 +232,4 @@ func (t *Transformer) TransformBatch(xy []float64) ([]float64, error) {
 		return out, ErrDomain
 	}
 	return out, nil
-}
-
-// isErrDomain errors.Is(err, ErrDomain) 的本地包装(避免在热路径里再引 errors)。
-func isErrDomain(err error) bool {
-	if err == nil {
-		return false
-	}
-	if err == ErrDomain {
-		return true
-	}
-	if de, ok := err.(*DomainError); ok {
-		return de.Unwrap() == ErrDomain
-	}
-	return false
 }

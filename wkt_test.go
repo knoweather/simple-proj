@@ -130,6 +130,21 @@ func TestWKTRejections(t *testing.T) {
 			t.Errorf("%s: 应报错", c.name)
 		}
 	}
+	// 前后带空白/换行的 WKT 也要认(文件里常这么贴)
+	wrapped := "\n  " + `PROJCRS["x",BASEGEOGCRS["WGS 84",DATUM["WGS 1984",ELLIPSOID["WGS 84",6378137,298.257223563]]],CONVERSION["c",METHOD["Transverse Mercator"],PARAMETER["Latitude of natural origin",0,ANGLEUNIT["degree",0.0174532925199433]],PARAMETER["Longitude of natural origin",117,ANGLEUNIT["degree",0.0174532925199433]],PARAMETER["Scale factor at natural origin",0.9996,SCALEUNIT["unity",1]],PARAMETER["False easting",500000,LENGTHUNIT["metre",1]],PARAMETER["False northing",0,LENGTHUNIT["metre",1]]],CS[Cartesian,2],AXIS["E",east,ORDER[1],LENGTHUNIT["metre",1]],AXIS["N",north,ORDER[2],LENGTHUNIT["metre",1]]]` + "  \n"
+	crs, err := Parse(wrapped)
+	if err != nil {
+		t.Fatalf("带空白的 WKT: %v", err)
+	}
+	pp, err := crs.NewProjection()
+	if err != nil {
+		t.Fatalf("带空白的 WKT NewProjection: %v", err)
+	}
+	x, y, _ := pp.Forward(117, 30)
+	if math.Abs(x-500000) > 1e-6 || math.Abs(y-3318785.3525812062) > 1e-6 {
+		t.Errorf("带空白 WKT 的 (117,30) = (%.6f, %.6f)", x, y)
+	}
+
 	// 非 WKT 的串仍走 proj 串路径
 	if _, err := Parse("+proj=latlong +ellps=WGS84"); err != nil {
 		t.Errorf("proj 串不该被误判成 WKT: %v", err)

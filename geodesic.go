@@ -691,7 +691,6 @@ func (g *geod) inverse(lat1, lon1, lat2, lon2 float64) (s12, azi1, azi2 float64,
 		sig12        float64
 		salp1, calp1 float64
 		salp2, calp2 float64
-		a12          float64
 	)
 	meridian := lat1 == -90 || slam12 == 0
 
@@ -714,7 +713,6 @@ func (g *geod) inverse(lat1, lon1, lat2, lon2 float64) (s12, azi1, azi2 float64,
 			}
 			m12x *= g.b
 			s12x *= g.b
-			a12 = sig12 * (180 / math.Pi)
 		} else {
 			// m12 < 0:长球体且太靠近对跖点
 			meridian = false
@@ -728,7 +726,6 @@ func (g *geod) inverse(lat1, lon1, lat2, lon2 float64) (s12, azi1, azi2 float64,
 		s12x = g.a * lam12
 		sig12 = lam12 / g.f1
 		m12x = g.b * math.Sin(sig12)
-		a12 = lon12 / g.f1
 	} else if !meridian {
 		var dnm float64
 		sig12, salp1, calp1, salp2, calp2, dnm = g.inverseStart(
@@ -737,7 +734,6 @@ func (g *geod) inverse(lat1, lon1, lat2, lon2 float64) (s12, azi1, azi2 float64,
 			// 短线(InverseStart 已给出 salp2/calp2/dnm)
 			s12x = sig12 * g.b * dnm
 			m12x = geodSq(dnm) * g.b * math.Sin(sig12/dnm)
-			a12 = sig12 * (180 / math.Pi)
 		} else {
 			// Newton 迭代:f(alp1) = lambda12(alp1) - lam12 = 0
 			salp1a, calp1a := geodTiny, 1.0
@@ -784,7 +780,6 @@ func (g *geod) inverse(lat1, lon1, lat2, lon2 float64) (s12, azi1, azi2 float64,
 				cbet1, cbet2, true, ca[:])
 			m12x *= g.b
 			s12x *= g.b
-			a12 = sig12 * (180 / math.Pi)
 		}
 	}
 
@@ -798,7 +793,6 @@ func (g *geod) inverse(lat1, lon1, lat2, lon2 float64) (s12, azi1, azi2 float64,
 	salp2 *= swapp * lonsign
 	calp2 *= swapp * latsign
 
-	_ = a12
 	return 0 + s12x, geodAtan2d(salp1, calp1), geodAtan2d(salp2, calp2), true
 }
 
@@ -904,12 +898,10 @@ func (l *geodLine) position(s12 float64) (lat2, lon2, azi2 float64) {
 	salp2 := l.salp0
 	calp2 := l.calp0 * csig2
 
-	// 经度
-	E := math.Copysign(1, l.salp0)
+	// 经度(非 LONG_UNROLL 模式:omg12 直接取差,不做展开)
 	somg2 := l.salp0 * ssig2
 	comg2 := csig2
 	omg12 := math.Atan2(somg2*l.comg1-comg2*l.somg1, comg2*l.comg1+somg2*l.somg1)
-	_ = E
 	lam12 := omg12 + l.A3c*(sig12+(geodSinCosSeries(true, ssig2, csig2, l.C3a[:], geodOrder-1)-l.B31))
 	lon12 := lam12 * (180 / math.Pi)
 	lon2 = geodAngNormalize(geodAngNormalize(l.lon1) + geodAngNormalize(lon12))

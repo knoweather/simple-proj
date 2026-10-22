@@ -13,6 +13,21 @@
 
 ## 2. fixture 清单
 
+### 2.1 扩展参照集(2026-10-22 新增,与 golden 并列)
+
+| 文件 | 内容 | 生成器 | 消费端 |
+|---|---|---|---|
+| `sweep_extra.json` | 22 个 case(含 aeqd 五方面、utm、merc_km)的独立点集:结构化边角 + 固定种子 LCG | `gen_sweep.py` | `sweep_extra_test.go` |
+| `geodesic_ref.json` | 大地线解:79 反解 + 69 正解(WGS84),含近对跖/极区/8 m 短线 | `gen_geodesic.py` | `geodesic_test.go` |
+| `wkt_ref.json` | 14 个 CRS × WKT2/WKT1 两种方言的 WKT 原文 + 该方言自身的 forward 参照 | `gen_wkt.py` | `wkt_test.go` |
+
+三者的 `generator` 字段同样是 pyproj 版本;**每个 WKT 方言的参照由 pyproj 解析
+该方言文本得到**(WKT1 有损,拿源 CRS 的坐标当基准会误判)。`geodesic_ref.json`
+的 `azi2` 存的是**点 2 的前向方位**(GeographicLib 约定),pyproj 的 `Geod.inv`
+返回反方位,生成器已 +180 归一。
+
+### 2.2 golden 网格
+
 | 文件 | fwd | inv | specials | CRS |
 |---|---|---|---|---|
 | `golden_latlong.json` | 1099 | 1089 | 0 | `+proj=latlong +ellps=WGS84` |
