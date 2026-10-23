@@ -1,9 +1,9 @@
 package proj
 
-// geolib_test.go — direct tests for B's own geolib.go (PROGRESS-A.md C#2 asked B to
-// cover its two files; the golden consumers only exercise the kernels, so these
-// functions were at 0%). Reference values are computed independently in Python from
-// the definitions and cross-checked against pyproj 3.8.0 / PROJ 9.8.1.
+// geolib_test.go — direct tests for geolib.go. The golden consumers only exercise
+// the kernels, so these helpers would otherwise stay uncovered. Reference values
+// are computed independently in Python from the definitions and cross-checked
+// against pyproj 3.8.0 / PROJ 9.8.1.
 
 import (
 	"math"
@@ -110,7 +110,7 @@ func TestAuthalicLat(t *testing.T) {
 	}
 }
 
-// TestGeoNormLon pins the frozen output rule [-180, 180).
+// TestGeoNormLon pins the output rule [-180, 180).
 func TestGeoNormLon(t *testing.T) {
 	for _, c := range []struct{ in, want float64 }{
 		{170, 170}, {-190, 170}, {190, -170}, {-180, -180}, {180, -180}, {360, 0}, {-360, 0},

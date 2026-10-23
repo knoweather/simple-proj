@@ -175,8 +175,8 @@ func TestParseEPSG(t *testing.T) {
 }
 
 func TestParseGoldenCRSEnd2End(t *testing.T) {
-	// xcheck 侧将要消费的 9 条 CRS 字符串必须全部可解析(此处不含 mer 参数等
-	// B 轨专属投影的注册检查 —— NewProjection 属于各自轨道的测试)。
+	// xcheck 侧将要消费的 9 条 CRS 字符串必须全部可解析(各投影能否注册由
+	// 各自投影的 NewProjection 测试覆盖)。
 	for _, crs := range []string{
 		"+proj=latlong +ellps=WGS84",
 		"+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +units=m",
@@ -206,7 +206,7 @@ func TestParseSweepStorage(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	if c.UnknownParams["sweep"] != "x" {
-		t.Errorf("sweep 应存 UnknownParams(决策 D1), got %+v", c.UnknownParams)
+		t.Errorf("sweep 应存 UnknownParams, got %+v", c.UnknownParams)
 	}
 	if got := paramString(c, "sweep", "y"); got != "x" {
 		t.Errorf("paramString(sweep): %q", got)
@@ -229,7 +229,7 @@ func TestParseUnknownParams(t *testing.T) {
 }
 
 // TestParseRejectsUnsupportedSemantics 有语义但未实现的键必须 fail-loud:
-// 静默忽略 +pm/+towgs84/+nadgrids 之类会让坐标算错却不报错(本次改造的核心)。
+// 静默忽略 +pm/+towgs84/+nadgrids 之类会让坐标算错却不报错。
 func TestParseRejectsUnsupportedSemantics(t *testing.T) {
 	cases := []string{
 		"+proj=merc +pm=paris +ellps=WGS84",       // 本初子午线
@@ -386,7 +386,7 @@ func TestNewProjectionDispatch(t *testing.T) {
 		t.Errorf("CRS() 应回传绑定实例")
 	}
 	// 未注册投影(+proj 合法但 impl 未登记于 factories)应报错不 panic
-	// (B 轨 stere 已注册,故用合成名;不能用 Parse 构造,knownProj 会拒收)
+	// (stere 已注册,故用合成名;不能用 Parse 构造,knownProj 会拒收)
 	c2 := &CRS{Proj: "pseudo_no_impl"}
 	_, err = c2.NewProjection()
 	if err == nil || errors.Is(err, ErrDomain) {

@@ -1,16 +1,15 @@
 package proj
 
-// golden_test.go — shared golden-fixture helpers for the B track's golden consumers.
-// Owner: AI-B. COORDINATION §1 lists xcheck/ and impl_*_test.go as B's files; this
-// helper file is proposed as B-owned in PROGRESS-B.md (C#6) so that A's test files do
-// not have to redefine the loader. If A already has its own loader, A should prefix it
-// (e.g. aGoldenRec) — the package must not contain two definitions.
+// golden_test.go — shared golden-fixture helpers for the golden consumers.
 //
-// Tolerances are the frozen ones from COORDINATION §2.5:
+// The package must not contain two definitions of these helpers: other test files
+// should reuse them or keep their own prefixed (e.g. aGoldenRec).
+//
+// Tolerances:
 //   forward    <= 1e-6 m absolute
 //   inverse    <= 1e-9 deg absolute
 //   round-trip <= 1e-9 deg
-// plus the relative floor recorded as C#3.
+// plus a relative floor for extreme coordinates (see tol).
 
 import (
 	"encoding/json"
@@ -41,8 +40,8 @@ type goldenFile struct {
 	Specials  []goldenRec `json:"specials"`
 }
 
-// Minimal ellipsoid table for the fixtures in use. A owns ellipsoid.go; this is
-// test-only so the B track can run before the contract lands. Keys are lowercase.
+// Minimal ellipsoid table for the fixtures in use. Test-only, so the golden
+// consumers do not depend on the ellipsoid derivation code. Keys are lowercase.
 var testEllipsoids = map[string][2]float64{
 	"wgs84":  {6378137, 6356752.314245179},
 	"grs80":  {6378137, 6356752.314245179},
@@ -83,7 +82,7 @@ func goldenParams(s string) map[string]float64 {
 	return p
 }
 
-// ellipsoidFor resolves the fixture's ellipsoid the way the frozen rule D3 does:
+// ellipsoidFor resolves the fixture's ellipsoid the way EllipsoidFromParams does:
 // explicit +a/+b win over the named ellipsoid.
 func ellipsoidFor(p map[string]float64, crs string) (float64, float64) {
 	name := "wgs84"
@@ -105,10 +104,10 @@ func ellipsoidFor(p map[string]float64, crs string) (float64, float64) {
 	return ell[0], ell[1]
 }
 
-// tol implements DESIGN §3.2's "relative 1e-6 / absolute 1e-3 m, strict first".
-// Strict 1e-6 m for ordinary coordinates; for the extreme grid points (polar
+// tol implements the "strict absolute, relative floor for extreme values" rule:
+// strict 1e-6 m for ordinary coordinates; for the extreme grid points (polar
 // stereographic rho reaches 1.3e10 m) double rounding alone is ~1e-13 relative,
-// so a relative floor is allowed. Recorded as C#3 in PROGRESS-B.md.
+// so a relative floor is allowed.
 func tol(want float64) float64 {
 	t := 1e-6
 	if r := math.Abs(want) * 1e-12; r > t {
@@ -119,7 +118,7 @@ func tol(want float64) float64 {
 
 // lonDiff compares two longitudes modulo 360 so that -180 and 180 are the same point.
 // pyproj returns 179.99999999999994 for the grid column lon = 180 while our kernel
-// returns exactly -180; both are the same meridian. Recorded as C#5 in PROGRESS-B.md.
+// returns exactly -180; both are the same meridian.
 func lonDiff(got, want float64) float64 {
 	d := got - want
 	if d > 180 {

@@ -4,17 +4,13 @@
 *.test
 *.out
 *.prof
-*.cov
 coverage/
 coverage.txt
 
-# 编辑器 / 系统
+# Editors / OS
 .DS_Store
 Thumbs.db
-
-# AI 助手工作区 / IDE（不入库）
-.workbuddy-ai/
 .idea/
 
-# 本地临时目录（下载的参考源码 / 探针程序）
+# Local scratch (reference sources, probes); never committed.
 .tmp/

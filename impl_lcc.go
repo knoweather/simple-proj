@@ -1,12 +1,11 @@
 package proj
 
 // impl_lcc.go — Lambert conformal conic projection (ellipsoidal, two standard
-// parallels). Owner: AI-B (COORDINATION §1).
+// parallels).
 //
 // Formula source: Snyder, "Map Projections — A Working Manual" (USGS PP 1395),
 // ch. 14. Structure cross-checked against PROJ 9.8.1 src/projections/lcc.cpp
-// (fetched verbatim; code rewritten, not copied — COORDINATION §6 red line 2).
-// See FORMULA-NOTES.md §3.
+// (code rewritten, not copied).
 //
 // Derivation note: writing the map as (φ, λ) → (ρ(φ), n·(λ−λ0)) in polar form,
 // conformality requires dρ/dφ = −n·ρ·M/(N·cosφ), and M/(N·cosφ) integrates to
@@ -38,7 +37,7 @@ import (
 const lccEPS10 = 1e-10
 
 // lccKernel holds the precomputed constants. Immutable, so a Projection built
-// on it is thread-safe (COORDINATION §2.5).
+// on it is thread-safe.
 type lccKernel struct {
 	a, e, es float64
 	lat0     float64 // radians
@@ -93,7 +92,7 @@ func (q *lccKernel) forward(lon, lat float64) (x, y float64) {
 	}
 	// PROJ's pipeline reduces lon - lon0 to (-pi, pi] before fwd; for a conic
 	// theta = n*dlon is not 2*pi-periodic (n != 1), so the normalization is
-	// load-bearing, not cosmetic. See FORMULA-NOTES.md §3.
+	// load-bearing, not cosmetic.
 	lam := geoAdjLonPi(lon-q.lon0) * q.n
 	rho := q.c * math.Exp(-q.n*IsometricLat(lat, q.e))
 	return rho * math.Sin(lam), q.rho0 - rho*math.Cos(lam)
@@ -119,7 +118,7 @@ func (q *lccKernel) inverse(x, y float64) (lon, lat float64, ok bool) {
 	return q.lon0 + math.Atan2(x, dy)/q.n, phi, true
 }
 
-// —— frozen contract entry points (COORDINATION §2.3) ——
+// —— adapter entry points ——
 
 func lccForward(a, b, lat0, lon0, lat1, lat2, k0 float64, lon, lat float64) (x, y float64) {
 	return newLccKernel(a, b, lat0, lon0, lat1, lat2, k0).forward(lon, lat)
@@ -146,11 +145,10 @@ func newLcc(c *CRS) (Projection, error) {
 	lon0, _ := paramFloat(c, "lon_0", 0)
 	lat1, hasLat1 := paramFloat(c, "lat_1", 0)
 	if !hasLat1 {
-		// COORDINATION §2.3: a single-parallel lcc given only +lat_ts is the
-		// tangent cone lat1 = lat2 = lat_ts. (PROJ 9.8.1 itself rejects that
-		// input — lat_1 defaults to 0 and the |lat_1+lat_2| guard fires — but
-		// §2.3 asks for the tangent reading, so we accept it. Recorded in
-		// FORMULA-NOTES.md §3.)
+		// A single-parallel lcc given only +lat_ts is the tangent cone
+		// lat1 = lat2 = lat_ts. (PROJ 9.8.1 itself rejects that input — lat_1
+		// defaults to 0 and the |lat_1+lat_2| guard fires — but the tangent
+		// reading is what the caller means, so we accept it.)
 		lat1, _ = paramFloat(c, "lat_ts", 0)
 	}
 	lat2, hasLat2 := paramFloat(c, "lat_2", 0)

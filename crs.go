@@ -29,7 +29,7 @@ type CRS struct {
 
 // ---- 参数命名空间(归一化口径,PROJ 兼容拼写) --------------------------------
 
-// knownProj 投影名白名单(冻结 v1,DESIGN §1.2;值 = 常规名)。
+// knownProj 投影名白名单(值 = 常规名)。
 // longlat 为 latlong 的 PROJ 惯用别名。
 var knownProj = map[string]string{
 	"latlong": "latlong",
@@ -200,8 +200,8 @@ func rejectUnsupportedParam(key, val string) error {
 	return fmt.Errorf("proj: 不支持参数 +%s=%s(%s);静默忽略会让结果算错,本库选择报错", key, val, reason)
 }
 
-// specialCodes 特例码 → 规范 proj 串(DESIGN §1.1:EPSG 识别只做少量特例)。
-// 4326/4269 走 latlong(基准位移 v0 不做,NAD83 与 WGS84 同系无平移);
+// specialCodes 特例码 → 规范 proj 串(EPSG 识别只做少量特例)。
+// 4326/4269 走 latlong(基准位移不做,NAD83 与 WGS84 同系无平移);
 // 3857 是球面 Web 墨卡토(a==b)。
 var specialCodes = map[int]string{
 	4326:   "+proj=latlong +ellps=WGS84",
@@ -215,7 +215,7 @@ var specialCodeOrder = []int{4326, 4269, 3857, 900913}
 
 // Parse 解析 proj 字符串(如 "+proj=geos +lon_0=140.7 +h=35785863 +ellps=WGS84
 // +units=m +no_defs"),也识别 "EPSG:4326"/"EPSG:3857" 等常用码。
-// 归一化(DESIGN §1.1):
+// 归一化口径:
 //   - 键拼写容错(lat1→lat_1、k/k0→k_0、latts→lat_ts、r→R;键统一小写);
 //   - 度数参数支持 "+lat_0=1.57r" 弧度后缀;
 //   - 默认值填补: lat_0/lon_0/x_0/y_0 = 0、k_0 = 1(其余投影专属参数由 impl 处理);
@@ -322,7 +322,7 @@ func parseProjString(s string) (*CRS, error) {
 			}
 			canonical, known := knownProj[name]
 			if !known {
-				return nil, fmt.Errorf("proj: 未知 +proj=%q(v1 冻结清单见 PROGRESS-A 决策 D4)", val)
+				return nil, fmt.Errorf("proj: 未知 +proj=%q(支持的投影见 knownProj)", val)
 			}
 			crs.Proj = canonical
 		case key == "ellps":
@@ -356,7 +356,7 @@ func parseProjString(s string) (*CRS, error) {
 			}
 			crs.Params[key] = num
 		default:
-			// 未实现语义的键 fail-loud;白名单/未知键原样保留(决策 D1)。
+			// 未实现语义的键 fail-loud;白名单/未知键原样保留。
 			if _, bad := unsupportedParamReason[key]; bad {
 				if isNoopParamValue(key, val) {
 					crs.UnknownParams[key] = val
@@ -470,7 +470,7 @@ func validateNumericParams(params map[string]float64) error {
 	return nil
 }
 
-// EPSG 依 CRS 状态识别常用 EPSG 码(DESIGN §1.1:4326/3857/4269;识别不到返回 0,
+// EPSG 依 CRS 状态识别常用 EPSG 码(4326/3857/4269;识别不到返回 0,
 // 不查 proj.db)。优先识别由 "EPSG:xxxx" 字面量进入的字符串;其余做特征比对
 // (不含基准语义,4269 与 4326 同构差异只在椭球)。
 func (c *CRS) EPSG() int {
@@ -540,13 +540,13 @@ func near(a, b float64) bool {
 	return math.Abs(a-b) <= eps*(math.Abs(a)+math.Abs(b)+1)
 }
 
-// ---- 元数据自省(第二轮 goproj 评审的融合,见 PROGRESS-B)----------------------
+// ---- 元数据自省 ------------------------------------------------------------
 //
-// goproj(cgo 包装)里有一组 PROJ 的"输入/输出是什么量"的查询:
-// proj_angular_input / proj_degree_input / proj_angular_output /
-// proj_degree_output。本库的约定是固定的(地理 CRS 收发度、投影 CRS 收发米),
-// 所以不需要那四个函数;但**调用方**仍然需要机器可读地知道"这个 CRS 该喂度
-// 还是米、单位是什么"—— 那是 IsGeographic / Units 要做的事。
+// PROJ 的 C API 有一组"输入/输出是什么量"的查询(proj_angular_input /
+// proj_degree_input / proj_angular_output / proj_degree_output)。本库的约定是
+// 固定的(地理 CRS 收发度、投影 CRS 收发米),所以不需要那四个函数;但**调用方**
+// 仍然需要机器可读地知道"这个 CRS 该喂度还是米、单位是什么"—— 那是
+// IsGeographic / Units 要做的事。
 // 另外 pyproj 有 CRS.equals(),本库一直没有,这里补上(结构比较,不查数据库)。
 
 // IsGeographic 是否地理坐标系(本库只有 latlong 一种,收发都是度)。

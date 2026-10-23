@@ -15,19 +15,19 @@ var ErrDomain = errors.New("proj: outside projection domain")
 var factories = map[string]func(*CRS) (Projection, error){}
 
 // register —— 内部注册(各 impl 文件的 init 里调用;不是导出符号)——
-// register 由 A 在 proj.go 中实现。B 的 impl 文件调用之(idiomatic 样板):
+// idiomatic 样板:
 //
 //	func init() { register("stere", newStere) }
 //
 // 空名或重复注册属于装配错误,init 时立即暴露(不藏到运行期);Projection
-// 库 API 本身从不 panic(见 COORDINATION §2.5)。
+// 库 API 本身从不 panic。
 func register(name string, factory func(*CRS) (Projection, error)) {
 	if name == "" {
 		panic("proj: register: empty projection name")
 	}
 	// 先查重、再写入。测试会在运行期调用本函数验证上面两条 panic 分支
 	// (proj_internal_test.go);一旦把写入挪到查重之前,重复注册就会污染
-	// 全局注册表,并与并发的 NewProjection 读构成 data race。顺序是契约。
+	// 全局注册表,并与并发的 NewProjection 读构成 data race。顺序不能颠倒。
 	if _, dup := factories[name]; dup {
 		panic("proj: register: duplicate projection " + name)
 	}
@@ -45,8 +45,8 @@ type Projection interface {
 }
 
 // NewProjection 依 CRS.Proj 在工厂表里查找实现,返回实例。
-// 批量推荐: crs.NewProjection() 一次然后持句柄(DESIGN §2.1)。
-// +proj 名合法但实现尚未注册(如 B 轨投影未移交)时报错,不 panic。
+// 批量推荐: crs.NewProjection() 一次然后持句柄。
+// +proj 名合法但实现尚未注册时报错,不 panic。
 //
 // 非米单位(+units/+to_meter)在这里套一层换算:各 impl 一律按**米**计算
 // (含 x_0/y_0),对外坐标 = 米 / to_meter —— 与 PROJ 的 pj_fwd 收尾一致
@@ -101,7 +101,7 @@ func (u *unitScaled) Inverse(x, y float64) (float64, float64, error) {
 
 // ForwardBatch 批量正向:lonlat 为行主序 packed [lon0,lat0,lon1,lat1,...](度),
 // 返回同长 packed [x0,y0,...](米;latlong 投影为度)。
-// 语义(DESIGN §1.1 重采样场景):单点 Inverse/Forward 一切错误即时返回;
+// 语义(批量重采样场景):单点 Inverse/Forward 一切错误即时返回;
 // ErrDomain(定义域外)时该点写入 (NaN,NaN) 且循环继续,批末 err 返回 ErrDomain
 // 供 errors.Is 判定,有效点结果仍可用。
 func ForwardBatch(p Projection, lonlat []float64) (xy []float64, err error) {
@@ -173,8 +173,7 @@ func paramFloat(c *CRS, key string, def float64) (float64, bool) {
 
 // paramString 取非数值参数的字符串值。Parse 把识别到的非数值参数(sweep、
 // datum、towgs84、no_defs 等布尔旗标)与真正的未知参数同存 UnknownParams
-// (冻结契约只开放 Params[float64]/UnknownParams[string] 两个口,见
-// PROGRESS-A.md 决策 D1);def 为缺省值。
+// (CRS 只开放 Params[float64]/UnknownParams[string] 两个口);def 为缺省值。
 func paramString(c *CRS, key, def string) string {
 	if c == nil || c.UnknownParams == nil {
 		return def

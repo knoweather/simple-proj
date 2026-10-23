@@ -6,8 +6,8 @@ import (
 	"testing"
 )
 
-// impl_eqc_test.go — 参照值全部来自 probe7.py / probe8.py
-// (pyproj 3.8.0 / PROJ 9.8.1 @ 2026-10-17),按 COORDINATION 数值门槛断言:
+// impl_eqc_test.go — 参照值全部来自 pyproj 3.8.0 / PROJ 9.8.1 实测
+// (2026-10-17),按数值门槛断言:
 // forward ≤ 1e-6 m、inverse ≤ 1e-9 度。
 // 参照点保留机器满精度 repr;断言用门值而非 bit 相等 —— pyproj 与本实现
 // 的最后一次乘法次序差在 1e-10 m 量级,远低于门槛。
@@ -93,7 +93,7 @@ func TestEqcForwardGoldenCRS(t *testing.T) {
 	// golden_eqc.json 的 CRS(lat_ts=0,lon_0=180,WGS84)
 	p := mustEqc(t, "+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +units=m")
 	var acc eqcAcc
-	// probe7 主表
+	// 主表(前向 + 逆向)
 	for _, c := range []struct {
 		lon, lat, x, y, invLon, invLat float64
 	}{
@@ -106,7 +106,7 @@ func TestEqcForwardGoldenCRS(t *testing.T) {
 	} {
 		eqcCheck(t, "goldenCRS", p, c.lon, c.lat, c.x, c.y, c.invLon, c.invLat, &acc)
 	}
-	// probe8 Δλ 环绕边界
+	// Δλ 环绕边界
 	for _, c := range []struct{ lon, x float64 }{
 		{-180, 0.0}, {180, 0.0}, {-90, 10018754.171394622}, {90, -10018754.171394622},
 		{270, 10018754.171394622}, {-270, -10018754.171394622}, {89.9999, -10018765.3033437},
@@ -122,7 +122,7 @@ func TestEqcForwardGoldenCRS(t *testing.T) {
 			t.Errorf("Δλ 环绕 Forward(%v) x=%v want %v 偏差 %g", c.lon, x, c.x, e)
 		}
 	}
-	// probe8 纬向补值(lat_ts=0 → y 与 lon_0 无关)
+	// 纬向补值(lat_ts=0 → y 与 lon_0 无关)
 	for _, c := range []struct{ lat, y float64 }{
 		{90, 10001965.729312722}, {-90, -10001965.729312722},
 		{85, 9443510.140666245}, {-85, -9443510.140666245}, {33.7, 3730385.5380052268},
@@ -174,7 +174,7 @@ func TestEqcSphere(t *testing.T) {
 }
 
 func TestEqcK0Ignored(t *testing.T) {
-	// PROJ 语义:eqc 忽略 k_0(probe8 实测 k_0=3 与无 k_0 全同)
+	// PROJ 语义:eqc 忽略 k_0(pyproj 实测 k_0=3 与无 k_0 全同)
 	p1 := mustEqc(t, "+proj=eqc +lat_ts=0 +k_0=3 +a=6378137 +b=6356752.3 +lon_0=0")
 	p2 := mustEqc(t, "+proj=eqc +lat_ts=0 +a=6378137 +b=6356752.3 +lon_0=0")
 	for _, pt := range [][2]float64{{30, 45}, {-123.7, -22.2}} {

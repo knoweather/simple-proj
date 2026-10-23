@@ -1,10 +1,10 @@
 package proj
 
-// laea_test.go — AI-B's golden consumer for the Lambert azimuthal equal-area fixture.
-// Shared loader lives in golden_test.go (C#6 in PROGRESS-B.md).
+// laea_test.go — golden consumer for the Lambert azimuthal equal-area fixture.
+// Shared loader lives in golden_test.go.
 //
-// Tolerances: COORDINATION §2.5 — forward <= 1e-6 m absolute (with the relative floor
-// of C#3), inverse <= 1e-9 deg absolute, round-trip <= 1e-9 deg.
+// Tolerances: forward <= 1e-6 m absolute (with the relative floor of tol),
+// inverse <= 1e-9 deg absolute, round-trip <= 1e-9 deg.
 
 import (
 	"errors"
@@ -13,7 +13,7 @@ import (
 )
 
 // TestLaeaAspects covers all four aspect modes (equatorial lat_0=0, oblique
-// lat_0=45, north pole lat_0=90, south pole lat_0=-90) through the full contract
+// lat_0=45, north pole lat_0=90, south pole lat_0=-90) through the full public
 // path. The golden fixture pins a single aspect; the others' FORWARD and the
 // polar INVERSE branches were unverified. Values are pyproj 3.8.0 / PROJ 9.8.1.
 func TestLaeaAspects(t *testing.T) {
@@ -120,7 +120,7 @@ func TestGoldenLaea(t *testing.T) {
 		len(g.Forward), maxFwd, len(g.Inverse), maxInv, len(g.Specials))
 }
 
-// TestLaeaRoundTrip is the DESIGN §2.3 sanity gate through our own kernel.
+// TestLaeaRoundTrip is a sanity gate through our own kernel.
 func TestLaeaRoundTrip(t *testing.T) {
 	g := loadGolden(t, "golden_laea.json")
 	p := goldenParams(g.CRS)
@@ -158,19 +158,19 @@ func TestLaeaRoundTrip(t *testing.T) {
 	// Forward still matches pyproj just inside the edge: (-6.35083458383568e-07,
 	// 12734867.3268257). The round trip there is ill-conditioned — pyproj itself comes
 	// back at -44.899998958 — so the 1e-9 deg round-trip gate is only applied to
-	// well-conditioned points. Recorded as C#7 in PROGRESS-B.md.
+	// well-conditioned points.
 	//
 	// We land 4.6e-4 m away here: b0 = 1 + cos(z) with z ~ 179.9 deg is a catastrophic
 	// cancellation, so ~1e-16 in cos becomes ~7e-11 relative in b0. That is the best
-	// double precision can do, hence DESIGN §3.2's absolute 1e-3 m fallback.
+	// double precision can do, hence the absolute 1e-3 m fallback used below.
 	x, y := q.forward(geoDegToRad(-170), geoDegToRad(-44.9))
 	if math.Abs(x+6.35083458383568e-07) > 1e-3 || math.Abs(y-12734867.3268257) > 1e-3 {
 		t.Fatalf("forward just inside the antipode: got (%.6f, %.6f)", x, y)
 	}
 }
 
-// TestLaeaAdapter runs the golden points through the full contract path
-// (Parse → NewProjection → Forward/Inverse) and checks the ErrDomain contract at the
+// TestLaeaAdapter runs the golden points through the full public path
+// (Parse → NewProjection → Forward/Inverse) and checks the ErrDomain behavior at the
 // antipode, which is laea's only hard domain edge.
 func TestLaeaAdapter(t *testing.T) {
 	g := loadGolden(t, "golden_laea.json")
@@ -226,9 +226,9 @@ func TestLaeaAdapter(t *testing.T) {
 	}
 }
 
-// TestLaeaFrozenSignature exercises the frozen §2.3 entry points directly
+// TestLaeaKernelSignature exercises the kernel entry points directly
 // (laeaForward/laeaInverse), which the adapter tests do not reach.
-func TestLaeaFrozenSignature(t *testing.T) {
+func TestLaeaKernelSignature(t *testing.T) {
 	g := loadGolden(t, "golden_laea.json")
 	p := goldenParams(g.CRS)
 	a, b := ellipsoidFor(p, g.CRS)
@@ -289,12 +289,12 @@ func TestLaeaSphere(t *testing.T) {
 }
 
 // TestLaeaPolarAspects covers the modes the golden fixture does not exercise:
-// N_POLE / S_POLE / EQUIT. Values are checked against pyproj 3.8.0 (PROJ 9.8.1)
-// — recorded in FORMULA-NOTES.md §2 — so this test is self-contained.
+// N_POLE / S_POLE / EQUIT. Values are checked against pyproj 3.8.0 (PROJ 9.8.1),
+// so this test is self-contained.
 func TestLaeaPolarAspects(t *testing.T) {
 	a, b := testEllipsoids["wgs84"][0], testEllipsoids["wgs84"][1]
 
-	// pyproj 3.8.0 / PROJ 9.8.1, +ellps=WGS84 (values recorded in FORMULA-NOTES.md §2).
+	// pyproj 3.8.0 / PROJ 9.8.1, +ellps=WGS84(参照值就地记录)。
 	cases := []struct {
 		lat0, lon0 float64
 		lon, lat   float64

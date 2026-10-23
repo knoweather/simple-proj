@@ -283,7 +283,7 @@ func TestObTranAngularOutput(t *testing.T) {
 	}
 }
 
-// TestObTranInputGuards 输入域校验与 latlong 同口径(§2.5)。
+// TestObTranInputGuards 输入域校验与 latlong 同口径。
 func TestObTranInputGuards(t *testing.T) {
 	p := mustProj(t, "+proj=ob_tran +o_proj=longlat +o_lat_p=30 +ellps=WGS84")
 	if _, _, err := p.Forward(400, 0); err == nil {
@@ -298,7 +298,7 @@ func TestObTranInputGuards(t *testing.T) {
 	// 输入经度允许 [−360,360] 的放宽区间,输出归一化到 [−180,180)
 	x, _, err := p.Forward(350, 0)
 	if err != nil {
-		t.Fatalf("lon=350 应放行(§2.5): %v", err)
+		t.Fatalf("lon=350 应放行: %v", err)
 	}
 	if x < -180 || x >= 180 {
 		t.Errorf("输出经度未归一: %v", x)

@@ -77,8 +77,8 @@ func TestGRIBProducerRadius(t *testing.T) {
 	}
 }
 
-// TestGRIBDualAxisGap GRIBEllipsoid 对双轴形状 3/7 保持 fail-loud(C#1-ACK 后
-// 双轴解码改走 GRIBEllipsoidAxes,原函数只管单维/固定形状)。
+// TestGRIBDualAxisGap GRIBEllipsoid 对双轴形状 3/7 保持 fail-loud(双轴解码走
+// GRIBEllipsoidAxes,本函数只管单维/固定形状)。
 func TestGRIBDualAxisGap(t *testing.T) {
 	for _, shape := range []int{3, 7} {
 		_, err := GRIBEllipsoid(shape, 0xc0, 1234)
@@ -91,7 +91,7 @@ func TestGRIBDualAxisGap(t *testing.T) {
 	}
 }
 
-// TestGRIBEllipsoidAxes C#1 落地:生产者双轴(shape 3 单位 km,shape 7 单位 m)。
+// TestGRIBEllipsoidAxes 生产者双轴(shape 3 单位 km,shape 7 单位 m)。
 // 参照 WGS84:a=6378137 m,b=6356752 m(ecCodes 值 = raw × 10^-scale,km 项 ×1000)。
 func TestGRIBEllipsoidAxes(t *testing.T) {
 	// shape 7(米):scale=0 直接解码

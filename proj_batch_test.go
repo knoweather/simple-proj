@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// proj_batch_test.go — ForwardBatch / InverseBatch 语义(决策 D2):
+// proj_batch_test.go — ForwardBatch / InverseBatch 语义:
 //   - 单点 ErrDomain → 该点 (NaN,NaN),循环继续,批末 err = ErrDomain;
 //   - 其他错误 → 整批立即失败返回 nil;
 //   - 长度奇数 / nil Projection → 错误。
@@ -49,7 +49,7 @@ func TestForwardBatchDomainPause(t *testing.T) {
 	if math.IsNaN(xy[0]) || math.IsNaN(xy[4]) {
 		t.Errorf("point inside domain should not be contaminated: %v", xy)
 	}
-	// 有效点数值抽查(参照 probe9;1ulp 级次序差容许,用 forward 门槛)
+	// 有效点数值抽查(参照 pyproj;1ulp 级次序差容许,用 forward 门槛)
 	if e := math.Abs(xy[0]-(-1472629.351973165)) + math.Abs(xy[1]-(-4958537.734914743)); e > 1e-6 {
 		t.Errorf("域内点值漂移: %v,%v (e=%g)", xy[0], xy[1], e)
 	}

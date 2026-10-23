@@ -2,8 +2,8 @@ package proj
 
 // impl_aeqd_test.go — aeqd 四方面(极轴 N/S、赤道、斜轴)× 球/椭球。
 //
-// 参照值全部来自 pyproj 3.8.0 / PROJ 9.8.1 实测(2026-10-22),门槛沿用
-// COORDINATION §2.5:forward ≤ 1e-6 m、inverse ≤ 1e-9 度。
+// 参照值全部来自 pyproj 3.8.0 / PROJ 9.8.1 实测(2026-10-22),门槛:
+// forward ≤ 1e-6 m、inverse ≤ 1e-9 度。
 // 椭球斜轴/赤道走 geodesic.go 的 Karney 解,与 pyproj 的距离差见
 // geodesic_test.go(实测 ≤ 4e-9 m)。
 
@@ -157,7 +157,7 @@ func TestAeqdInputValidation(t *testing.T) {
 
 // TestAeqdSphereAspects 球体三个方面(极轴 N/S、赤道)的正反变换。
 // 参照值 = pyproj 3.8.0 / PROJ 9.8.1 实测(2026-10-22),(lon=30, lat=60)。
-// 之前只测了球体斜轴,sweep 也没有球体极轴用例 —— 这条分支是补测出来的。
+// 极轴与赤道分支 pyproj 的 sweep 用例未覆盖,这里单独定住。
 func TestAeqdSphereAspects(t *testing.T) {
 	cases := []struct {
 		crs    string

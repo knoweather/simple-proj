@@ -6,14 +6,14 @@ import (
 )
 
 // impl_eqc.go — Equidistant Cylindrical(Plate Carrée,EPSG:1028/1029)。
-// Owner: AI-A。公式口径 PROJ 9.8 eqc.cpp(参考实现,非逐字拷贝;重写为 Go):
+// 公式口径 PROJ 9.8 eqc.cpp(参考实现,非逐字拷贝;重写为 Go):
 //
 //	球体(EPSG:1029):x = R·cos(lat_ts)·λ,        y = R·(φ − φ0)
 //	椭球(EPSG:1028):x = nu1·cos(lat_ts)·λ(×a),  y = M(φ) − M(φ0)
 //	  其中 nu1 = 1/√(1−es·sin²lat_ts)(a-归一),M 为子午线弧。
 //
 // 尺度口径:坐标在投影内先 a-归一,乘 a 在本实现显式完成(对应 PROJ pj_fwd 的
-// ×P->a);k_0 被 eqc 忽略(probe8 实测 pyproj 3.8 k_0=2/3 前后相同,PROJ 语义);
+// ×P->a);k_0 被 eqc 忽略(pyproj 3.8 实测 k_0=2/3 前后相同,PROJ 语义);
 // Δλ 与输出经度都用 normLonDeg 归一(对应 adjlon);|lat_ts| = 90 时 rc = 0
 // 会除零,PROJ 报错,这里同样拒绝。
 // 子午线弧 M 用 mlfn.go(Karney 六阶级数,与 PROJ 9.8 mlfn.cpp/latitudes.cpp
@@ -83,7 +83,7 @@ func newEqc(c *CRS) (Projection, error) {
 	return p, nil
 }
 
-// CRS 应回传绑定实例(契约 §2.3)。
+// CRS 应回传绑定实例。
 func (p *eqcProj) CRS() *CRS { return p.crs }
 
 // Forward lon/lat(度)→ x, y(米)。
@@ -100,7 +100,7 @@ func (p *eqcProj) Forward(lon, lat float64) (x, y float64, err error) {
 }
 
 // Inverse x, y(米)→ lon/lat(度)。eqc 全平面可逆,无定义域错误;
-// 仅拒绝非有限输入(EnterDomain 不冒充,§2.5)。
+// 仅拒绝非有限输入(不冒充 ErrDomain)。
 func (p *eqcProj) Inverse(x, y float64) (lon, lat float64, err error) {
 	if math.IsNaN(x) || math.IsInf(x, 0) || math.IsNaN(y) || math.IsInf(y, 0) {
 		return math.NaN(), math.NaN(), fmt.Errorf("proj: eqc Inverse 输入非有限 (%v,%v)", x, y)

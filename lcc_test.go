@@ -1,10 +1,10 @@
 package proj
 
-// lcc_test.go — AI-B's golden consumer for the Lambert conformal conic fixture.
-// Shared loader lives in golden_test.go (C#6 in PROGRESS-B.md).
+// lcc_test.go — golden consumer for the Lambert conformal conic fixture.
+// Shared loader lives in golden_test.go.
 //
-// Tolerances: COORDINATION §2.5 — forward <= 1e-6 m absolute (with the relative
-// floor of C#3), inverse <= 1e-9 deg absolute, round-trip <= 1e-9 deg.
+// Tolerances: forward <= 1e-6 m absolute (with the relative floor of tol),
+// inverse <= 1e-9 deg absolute, round-trip <= 1e-9 deg.
 
 import (
 	"errors"
@@ -60,7 +60,7 @@ func TestGoldenLcc(t *testing.T) {
 		len(g.Forward), maxFwd, len(g.Inverse), maxInv)
 }
 
-// TestLccAdapter runs the golden points through the full contract path
+// TestLccAdapter runs the golden points through the full public path
 // (Parse → NewProjection → Forward/Inverse) and checks PROJ's setup guards.
 func TestLccAdapter(t *testing.T) {
 	g := loadGolden(t, "golden_lcc.json")
@@ -95,8 +95,8 @@ func TestLccAdapter(t *testing.T) {
 	}
 
 	// The far pole (φ·n <= 0) is outside PROJ's lcc domain; pyproj surfaces the
-	// PROJ error as (inf, inf) because errcheck defaults to False. Our contract
-	// turns the kernel NaN into ErrDomain (COORDINATION §2.5).
+	// PROJ error as (inf, inf) because errcheck defaults to False. The adapter
+	// turns the kernel NaN into ErrDomain.
 	if _, _, err := p.Forward(0, -90); !errors.Is(err, ErrDomain) {
 		t.Fatalf("far pole should give ErrDomain, got %v", err)
 	}
@@ -145,8 +145,8 @@ func TestLccAdapter(t *testing.T) {
 	}
 }
 
-// TestLccFrozenSignature exercises the frozen §2.3 entry points directly.
-func TestLccFrozenSignature(t *testing.T) {
+// TestLccKernelSignature exercises the kernel entry points directly.
+func TestLccKernelSignature(t *testing.T) {
 	g := loadGolden(t, "golden_lcc.json")
 	p := goldenParams(g.CRS)
 	a, b := ellipsoidFor(p, g.CRS)
@@ -177,8 +177,7 @@ func TestLccFrozenSignature(t *testing.T) {
 // TestLccTangentAndSouthern covers the cone geometries the golden fixture does
 // not exercise: the tangent (single-parallel) cone n = sin φ1, and the southern
 // cone where n < 0 (PROJ negates (x, y, ρ) in the inverse). All values are
-// pyproj 3.8.0 / PROJ 9.8.1 references with explicit lat_0=0 — recorded in
-// FORMULA-NOTES.md §3.
+// pyproj 3.8.0 / PROJ 9.8.1 references with explicit lat_0=0.
 func TestLccTangentAndSouthern(t *testing.T) {
 	a, b := testEllipsoids["wgs84"][0], testEllipsoids["wgs84"][1]
 	d := geoDegToRad

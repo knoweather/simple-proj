@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-xcheck/gen_sweep.py — extension sweep generator. Owner: AI-B (COORDINATION §1).
+xcheck/gen_sweep.py — extension sweep generator.
 
-Purpose: the frozen golden_*.json fixtures use one fixed 33x33 grid per CRS
-(DESIGN §3.1). This generator produces a SECOND, independent point set —
+Purpose: the golden_*.json fixtures use one fixed 33x33 grid per CRS.
+This generator produces a SECOND, independent point set —
 structured edges plus a seeded LCG (no numpy) — so the Go side is cross-checked
 against pyproj on points the fixtures never touch. Golden truth is still pyproj;
-COORDINATION §2.4's frozen schema is NOT extended, this is a separate file
-(xcheck/sweep_extra.json) consumed only by sweep_extra_test.go (B track).
+the golden schema is NOT extended — this is a separate file
+(xcheck/sweep_extra.json) consumed only by sweep_extra_test.go.
 
 Run from repo root:  python xcheck/gen_sweep.py
 Deps:                pyproj (same as gen_golden.py)
@@ -22,11 +22,10 @@ Semantics (identical plumbing to gen_golden.py):
     inf/NaN); inverse records take x/y from pyproj forward and ask pyproj back;
   * output longitudes are normalized to [-180, 180) (local norm_lon).
 
-NOTE: gen_golden.py was rewritten (commit 06d1455) and no longer exposes the
-geostring / norm_lon / finite helpers this script used. They are re-implemented
-locally below — single source of truth now lives here, matched-ellipsoid
-semantics preserved (see the note above about why we must NOT switch to a bare
-"EPSG:4326" source: Go does no datum shift, so the reference must share the
+NOTE: gen_golden.py does not expose the geostring / norm_lon / finite helpers
+this script needs. They are re-implemented locally below; matched-ellipsoid
+semantics are preserved (see the note above about why we must NOT switch to a
+bare "EPSG:4326" source: Go does no datum shift, so the reference must share the
 target's ellipsoid or the sweep drifts ~mm off Go for e.g. geos_x).
 """
 
@@ -163,9 +162,8 @@ EDGES = {
 }
 
 # Random-point domain boxes per case: (lon_lo, lon_hi, lat_lo, lat_hi) — chosen
-# to stay inside each projection's valid region (see PROGRESS-B.md notes:
-# tmerc ~81.7 deg of the central meridian, geos the visible disc, lcc/merc the
-# non-pole band, etc.).
+# to stay inside each projection's valid region (tmerc ~81.7 deg of the central
+# meridian, geos the visible disc, lcc/merc the non-pole band, etc.).
 BOXES = {
     "latlong": (-180, 180, -89.9, 89.9),
     "eqc": (-180, 180, -89.9, 89.9),
@@ -224,7 +222,7 @@ def main():
     out = {
         "generator": generator,
         "generated": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "note": "extension sweep beyond the frozen golden grids; consumed by sweep_extra_test.go (owner AI-B)",
+        "note": "extension sweep beyond the golden grids; consumed by sweep_extra_test.go",
         "cases": {},
     }
 
@@ -256,7 +254,7 @@ def main():
                             # central meridian) even PROJ's own round trip drifts
                             # ~1e-8 deg, so the Go side checks CONSISTENCY with
                             # pyproj's round trip there instead of the absolute
-                            # 1e-9 deg gate (C#7/C#13 philosophy).
+                            # 1e-9 deg gate (same rule as the Go-side test).
                             "rt_lon": norm_lon(rl), "rt_lat": la})
             inverse.append({"x": x, "y": y,
                             "lon": norm_lon(rl), "lat": la})

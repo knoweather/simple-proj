@@ -1,12 +1,11 @@
 package proj
 
-// bench_b_test.go — AI-B's batch benchmarks for the five B-track projections
-// (stere / laea / lcc / merc / tmerc), complementing bench_test.go (A 轨:
-// latlong / eqc / geos). Same methodology: 1e6 deterministic random points,
-// ForwardBatch/InverseBatch, ReportAllocs.
+// bench_b_test.go — batch benchmarks for stere / laea / lcc / merc / tmerc,
+// complementing bench_test.go (latlong / eqc / geos). Same methodology:
+// 1e6 deterministic random points, ForwardBatch/InverseBatch, ReportAllocs.
 //
 // Point bands stay inside each projection's valid region so the inverse
-// benchmarks get self-consistent inputs (D2: an out-of-domain point pauses the
+// benchmarks get self-consistent inputs (an out-of-domain point pauses the
 // batch with ErrDomain):
 //   - stere / laea / lcc: global grid (no hard domain edge in the batch band);
 //   - merc (sphere, +lat_ts=0): |lat| < 89.5 (the poles are degenerate);

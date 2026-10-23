@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// bench.go — 批量基准(DESIGN §4 T8:1e6 点 < 100 ms 目标)。
+// bench_test.go — 批量基准(性能目标:1e6 点 < 100 ms)。
 // go test -bench . -benchmem 跑;数据为随机分布的经纬网格与投影坐标。
 // 覆盖:latlong / eqc / geos(sweep=y)三投影的 Forward/InverseBatch。
 
@@ -25,7 +25,7 @@ func benchLonLat(n int) []float64 {
 }
 
 // benchLonLatDisc geos 专用:生成视界内(lon_0 ±40°、|lat|≤40°,最远对角
-// ~56° < 视界 ~81°)的点。逆基准需要坐标自洽(域外点批量会被 D2 判停)。
+// ~56° < 视界 ~81°)的点。逆基准需要坐标自洽(域外点会让批量判停)。
 func benchLonLatDisc(n int) []float64 {
 	rng := rand.New(rand.NewSource(42))
 	out := make([]float64, 2*n)
@@ -105,7 +105,7 @@ func BenchmarkInverseBatchGeos(b *testing.B) {
 	benchInverseBatch(b, "+proj=geos +h=35785863 +ellps=WGS84 +sweep=y", "disc")
 }
 
-// TestBatchPerf1e6 设计预算(DESIGN T8:1e6 < 100 ms)仲裁检查。
+// TestBatchPerf1e6 性能预算(1e6 点 < 100 ms)检查。
 // 不作硬性 CI 断言(共享 VM 载荷不可控);测量最快一批并在放大 2 倍余量内
 // 报告,超预算记 t.Skipf 留待人工复测 —— 预算里程碑,非语义回归。
 func TestBatchPerf1e6(t *testing.T) {
@@ -158,7 +158,7 @@ func TestBatchPerf1e6(t *testing.T) {
 	}
 }
 
-// ---- 第 5 轮新增投影(aeqd / utm)-----------------------------------------
+// ---- aeqd / utm 批量基准 ---------------------------------------------------
 
 func BenchmarkForwardBatchAeqd(b *testing.B) {
 	benchForwardBatch(b, "+proj=aeqd +lat_0=45 +lon_0=10 +ellps=WGS84", "")

@@ -9,8 +9,8 @@ import (
 // impl_obtran.go — Oblique Transverse / 旋转极点（PROJ `ob_tran`）。
 //
 // 为什么需要它：GRIB2 模板 **3.1（旋转经纬）** 与 **3.3（旋转高斯）** 是区域
-// 模式与 ECMWF/ICON 产品的常见网格。把旋转网格当普通经纬网格处理（DESIGN §5
-// 早期把 3.1 映射成 `+proj=eqc`）会让整幅数据静默错位 —— 不报错、坐标看着也
+// 模式与 ECMWF/ICON 产品的常见网格。把旋转网格当普通经纬网格处理（例如把 3.1
+// 映射成 `+proj=eqc`）会让整幅数据静默错位 —— 不报错、坐标看着也
 // 正常，只是每个点都落在错的地方。正确的 PROJ 表达就是 `+proj=ob_tran
 // +o_proj=longlat +o_lat_p=<北极纬度> +lon_0=<北极经度+180>`。
 //

@@ -1,8 +1,7 @@
 package proj
 
-// impl_info_test.go — tests for the goproj-fusion surface (C#14):
+// impl_info_test.go — tests for the metadata-introspection surface:
 // Info() metadata introspection and reason-carrying DomainError.
-// Owner: AI-B.
 
 import (
 	"errors"
@@ -38,7 +37,7 @@ func TestInfo(t *testing.T) {
 			t.Fatalf("%s: 元数据不完整: %+v", crs, info)
 		}
 		if !info.HasInverse {
-			t.Fatalf("%s: 本库 9 投影全部有逆变换", crs)
+			t.Fatalf("%s: 本库所有已注册投影都应有逆变换", crs)
 		}
 		spherical := c.Ellipsoid.A == c.Ellipsoid.B
 		if info.Spherical != spherical || info.Ellipsoidal == info.Spherical {
@@ -113,7 +112,7 @@ func TestDomainErrorReasons(t *testing.T) {
 	}
 }
 
-// TestBatchDomainErrorCompat 验证 DomainError 不破坏 A 轨 proj.go 的 D2 批量
+// TestBatchDomainErrorCompat 验证 DomainError 不破坏 proj.go 的批量
 // 语义:单点域外写 NaN 继续、批末裸 ErrDomain(not DomainError)、有效点完好。
 func TestBatchDomainErrorCompat(t *testing.T) {
 	c, err := Parse("+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84")
@@ -130,7 +129,7 @@ func TestBatchDomainErrorCompat(t *testing.T) {
 		t.Fatalf("批末应 errors.Is ErrDomain, got %v", err)
 	}
 	if err != ErrDomain {
-		t.Fatalf("D2 契约:批末返回 ErrDomain sentinel 本体(proj.go:84), got %T", err)
+		t.Fatalf("批末应返回 ErrDomain sentinel 本体(proj.go:84), got %T", err)
 	}
 	if !math.IsNaN(xy[2]) || !math.IsNaN(xy[3]) {
 		t.Fatalf("域外点应写 (NaN,NaN): %v", xy[2:])

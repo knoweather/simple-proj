@@ -1,127 +1,60 @@
-# xcheck/ — golden 对拍 fixture(owner: AI-B,C#8)
+# xcheck — reference fixtures for numerical parity
 
-> 本目录 owner=AI-B(COORDINATION §1:生成器与 fixture 归 B;A 只读消费)。
-> `xcheck_test.go`(A 轨消费端)读取本目录的 `golden_*.json` 做对拍断言。
-> Golden truth = **pyproj 3.8.0 / PROJ 9.8.1**(见每个文件头的 `generator` 字段)。
+This directory holds the reference data used by the Go tests. The fixtures are
+generated once with **pyproj 3.8.0 / PROJ 9.8.1**, committed as plain JSON, and
+consumed by the test suite without Python or pyproj installed.
 
-## 1. 这是什么
+The rule is simple: **pyproj is the oracle**. If an implementation disagrees
+with a fixture, the implementation is wrong unless the fixture itself is shown
+to be generated incorrectly.
 
-9 个投影的权威参照点集:33×33 经纬网格 + 每例固定的附加点 + 域界探针,
-由 pyproj 双向(正/逆)生成。Go 侧实现(`impl_*.go`)对它们逐点对拍,
-是 COORDINATION §2.5 数值门槛的落地手段。**权威永远在 pyproj 一侧**:
-对拍不一致时,以重跑 pyproj 的输出为仲裁(§5.4)。
+## Fixtures
 
-## 2. fixture 清单
-
-### 2.1 扩展参照集(2026-10-22 新增,与 golden 并列)
-
-| 文件 | 内容 | 生成器 | 消费端 |
+| File | Content | Generator | Consumer |
 |---|---|---|---|
-| `sweep_extra.json` | 22 个 case(含 aeqd 五方面、utm、merc_km)的独立点集:结构化边角 + 固定种子 LCG | `gen_sweep.py` | `sweep_extra_test.go` |
-| `geodesic_ref.json` | 大地线解:79 反解 + 69 正解(WGS84),含近对跖/极区/8 m 短线 | `gen_geodesic.py` | `geodesic_test.go` |
-| `wkt_ref.json` | 14 个 CRS × WKT2/WKT1 两种方言的 WKT 原文 + 该方言自身的 forward 参照 | `gen_wkt.py` | `wkt_test.go` |
-| `obtran_ref.json` | 7 组旋转极点 × 正反两向(83 正解 + 109 反解/组):极点邻域、反子午线、种子随机 | `gen_obtran.py` | `impl_obtran_test.go` |
+| `golden_latlong.json` | 33×33 lon/lat grid, forward + inverse | `gen_golden.py` | `xcheck_test.go` |
+| `golden_eqc.json` | same grid for Equidistant Cylindrical | `gen_golden.py` | `xcheck_test.go` |
+| `golden_geos_x.json` | geostationary sweep=x, visibility/NaN probes | `gen_golden.py` | `xcheck_test.go` |
+| `golden_geos_y.json` | geostationary sweep=y, visibility/NaN probes | `gen_golden.py` | `xcheck_test.go` |
+| `golden_stere.json` | polar stereographic | `gen_golden.py` | `stere_test.go` |
+| `golden_laea.json` | Lambert azimuthal equal-area | `gen_golden.py` | `laea_test.go` |
+| `golden_lcc.json` | Lambert conformal conic (2 standard parallels) | `gen_golden.py` | `lcc_test.go` |
+| `golden_merc.json` | spherical Mercator | `gen_golden.py` | `merc_test.go` |
+| `golden_tmerc.json` | transverse Mercator (Poder/Engsager) | `gen_golden.py` | `tmerc_test.go` |
+| `sweep_extra.json` | 22 independent cases: structured edges plus a fixed-seed LCG, including domain edges and unit scaling | `gen_sweep.py` | `sweep_extra_test.go` |
+| `geodesic_ref.json` | 86 inverse + 71 direct geodesic cases (near-antipodal, polar, 8 m lines, prolate ellipsoid) | `gen_geodesic.py` | `geodesic_test.go` |
+| `wkt_ref.json` | 14 CRS × WKT2/WKT1 text plus the forward coordinates of each dialect | `gen_wkt.py` | `wkt_test.go` |
+| `obtran_ref.json` | 7 rotated-pole configurations × both directions | `gen_obtran.py` | `impl_obtran_test.go` |
 
-`obtran_ref.json` 的 `rotated_to_geo` 喂 `Projection.Forward`、`geo_to_rotated`
-喂 `Inverse`(ob_tran 的输出是**度**,方向与米制投影相反,不能直接塞进 sweep)。
-经度一律归一化到 [−180,180),所以反子午线上读 −180 而 pyproj 可能印 +180。
+`wkt_ref.json` stores the reference produced by parsing each WKT dialect with
+pyproj, not by parsing the equivalent proj string: WKT1 loses some datum
+information, and the fixture intentionally captures that difference.
 
-四者的 `generator` 字段同样是 pyproj 版本;**每个 WKT 方言的参照由 pyproj 解析
-该方言文本得到**(WKT1 有损,拿源 CRS 的坐标当基准会误判)。`geodesic_ref.json`
-的 `azi2` 存的是**点 2 的前向方位**(GeographicLib 约定),pyproj 的 `Geod.inv`
-返回反方位,生成器已 +180 归一。
+## Tolerances
 
-### 2.2 golden 网格
+| Axis | Gate | Detail |
+|---|---|---|
+| forward | ≤ 1e-6 m absolute | huge coordinates use a relative floor `max(1e-6, |expected|·1e-12)` |
+| inverse | ≤ 1e-9 deg absolute | extreme displacements use a relative floor `max(1e-9, |x|/a·180/π·2.3e-16)` |
+| round trip | ≤ 1e-9 deg | at domain edges or ill-conditioned points only the single direction is checked |
+| longitude | circular comparison | −180 and +180 are the same meridian |
 
-| 文件 | fwd | inv | specials | CRS |
-|---|---|---|---|---|
-| `golden_latlong.json` | 1099 | 1089 | 0 | `+proj=latlong +ellps=WGS84` |
-| `golden_eqc.json` | 1099 | 1090 | 0 | `+proj=eqc +lat_ts=0 +lat_0=0 +lon_0=180 +x_0=0 +y_0=0 +ellps=WGS84 +units=m` |
-| `golden_geos_x.json` | 435 | 431 | 660 | `+proj=geos +lon_0=140.7 +h=35785863 +x_0=0 +y_0=0 +a=6378137 +b=6356752.3 +units=m +sweep=x` |
-| `golden_geos_y.json` | 407 | 405 | 686 | `+proj=geos +lon_0=0 +h=35785863 +ellps=WGS84 +sweep=y` |
-| `golden_stere.json` | 1099 | 1090 | 0 | `+proj=stere +lat_0=90 +lat_ts=60 +lon_0=-100 +ellps=WGS84` |
-| `golden_laea.json` | 1098 | 1089 | 2 | `+proj=laea +lat_0=45 +lon_0=10 +ellps=WGS84 +x_0=0 +y_0=0` |
-| `golden_lcc.json` | 1099 | 1090 | 0 | `+proj=lcc +lat_1=30 +lat_2=60 +lat_0=0 +lon_0=100 +ellps=WGS84` |
-| `golden_merc.json` | 1099 | 1090 | 0 | `+proj=merc +a=6378137 +b=6378137 +lat_ts=0.0 +lon_0=0.0 +x_0=0 +y_0=0 +units=m`(正球) |
-| `golden_tmerc.json` | 1091 | 1081 | 9 | `+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84` |
+The relative floors exist because at 1e9–1e12 m the double-precision ulp alone
+is far above the absolute gate; the individual residuals are recorded in the
+matrix tests and in `Info().Accuracy`.
 
-计数含义:网格点(1089)里被 pyproj 判域外的会降级进 `specials`(所以
-geos/tmerc 的 fwd < 1099);每例的域界探针,有限应答留在 `forward`/`inverse`,
-非有限应答进 `specials`。
-
-## 3. JSON schema(冻结于 COORDINATION §2.4)
-
-```json
-{
-  "crs":       "+proj=stere +lat_0=90 +lat_ts=60 +lon_0=-100 +ellps=WGS84",
-  "generator": "pyproj 3.7.x",
-  "generated": "2026-10-17T12:00:00Z",
-  "forward":   [{"lon": 2.5, "lat": 45.0, "x": 123456.789, "y": 654321.123}],
-  "inverse":   [{"x": 123456.789, "y": 654321.123, "lon": 2.5, "lat": 45.0}],
-  "specials":  [{"desc": "outside domain", "x": 9e9, "y": -9e9, "expectNaN": true}]
-}
-```
-
-- `forward`/`inverse`:普通参照点;字段即输入 → pyproj 输出。
-- `specials`:域界探针,**只存输入坐标 + `desc` + `expectNaN`**。它有**两种形态**:
-  - `{lon, lat}` = 正向域外探针(输入是经纬度);
-  - `{x, y}` = 逆向域外探针(输入是米;geos_y 的 "inverse far outside visible disc"
-    里 lon/lat 字字段装的其实是 x/y 米值)。
-  消费端按字段存在性分派(A 的 xcheck_test.go 已如此处理)。
-- `expectNaN: true`:pyproj 对该探针返回非有限值(PROJ HUGE_VAL)。JSON 不能写
-  inf/NaN,所以只记"期望非有限",Go 侧对应 `ErrDomain` + (NaN, NaN)。
-- 输出经度已归一到 `[-180, 180)`(生成器 `norm_lon`);极点纬度若 pyproj 给出
-  ±90.0000001 之类不归一,按原值记录,Go 侧按度比较。
-
-## 4. 生成器用法
+## Regenerating
 
 ```bash
-# 依赖: pyproj(3.8.0 起;pip install pyproj)
-python xcheck/gen_golden.py     # 从仓库根运行,覆写同目录 golden_*.json
+pip install "pyproj==3.8.0"
+python xcheck/gen_golden.py
+python xcheck/gen_sweep.py
+python xcheck/gen_geodesic.py
+python xcheck/gen_wkt.py
+python xcheck/gen_obtran.py
+go test ./...
 ```
 
-口径(与 `gen_golden.py` docstring 一致):
-
-- 网格:lon ∈ [−180, 180] 33 点、lat ∈ [−85, 85] 33 步长(DESIGN §3.1);
-  每点正向变换后立即用其输出做逆向,记录往返两侧。
-- 附加点(每例固定):赤道/本初/近极 ±89.9/±180 经线/±85 等 9 个 sanity 点。
-- 域界探针:`SPECIALS` 表按投影定制(极点、对跖点、卫星视野外、远距逆向等);
-  有限应答升级为普通记录,非有限应答进 `specials`。
-- 源 CRS:`+proj=longlat` + 仅保留椭球 token(`a/b/R/rf/f/es/ellps/datum`)——
-  投影参数(如 +h/+lat_ts/+sweep)混进 longlat 会让 PROJ 建出另一条管线,数值错位。
-- 输出采用 `Transformer.from_crs(geo, tgt, always_xy=True)`,并做"中心点必须落到
-  (x_0, y_0)"的健全性校验(挡 datum shift 混入)。
-- 行格式:一条记录一行,便于 diff 评审。
-
-## 5. 消费侧容差口径
-
-两层门槛,以 COORDINATION §2.5 为准:
-
-| 方向 | 门槛 | 备注 |
-|---|---|---|
-| forward | ≤ 1e-6 m 绝对 | 超大坐标用相对下限 `max(1e-6, \|want\|·1e-12)`(C#3) |
-| inverse | ≤ 1e-9 度绝对 | 极端位移用相对下限 `max(1e-9, \|x\|/a·180/π·2.3e-16)`(C#9) |
-| 往返 | ≤ 1e-9 度 | 域界/病态点只校单向(§3.2 回退,C#7) |
-| 经度 | 圆周比对 | `lonDiff()`:−180 与 180 是同一条经线(C#5) |
-
-共享助手(`golden_test.go`,B 拥有):`loadGolden` / `goldenParams` /
-`ellipsoidFor` / `tol` / `lonDiff`。A 的 `xcheck_test.go` 有自己的 loader,
-包内不得出现同名定义(C#6)。
-
-## 6. 再生策略(改 fixture = 改两轨的断言)
-
-1. **默认不要重跑生成器**。换 pyproj/PROJ 版本、改 `SPECIALS`/网格、或任何
-   fixture 内容变化,都必须先在 PROGRESS-B.md 记账(受影响文件列表),并通知 A
-   (A 的消费端自动收紧,失败即 A 的事故)。
-2. 重跑前确认 `generator` 字段的版本变化;fixture 内容如与 pyproj 输出不符,
-   以**重跑的 pyproj 输出**为准修 Go 侧实现,而不是手改 JSON。
-3. JSON 里不得手写 inf/NaN(非法 JSON);域外一律走 `expectNaN`。
-4. 仓库 `core.autocrlf=true`,工作区会是 CRLF、仓库存 LF;评审 fixture diff 时
-   用 `git diff`(自动归一),勿据此判"全文件变更"(C#11)。
-
-## 7. 已知坑(消费/生成时都咬过人)
-
-- **`expectNaN` 键名自带 "NaN" 子串**:A 的容错解码曾用宽替换把键名一起替换,
-  直接炸解析。替换只能针对值位。
-- specials 的两种探针形态(§3),按字段存在性分派,别假设字段名。
-- geos 的 `specials` 里混着"域外正向"和"域外逆向"两种,判据是字段不是 desc。
+Regenerate only when the reference set intentionally changes. A regenerated
+fixture must be reviewed together with the code change that consumes it; a
+fixture diff without a code diff usually means the local pyproj version moved.

@@ -1,22 +1,19 @@
 package proj
 
-// impl_merc.go — Mercator projection (spherical + ellipsoidal). Owner: AI-B
-// (COORDINATION §1).
+// impl_merc.go — Mercator projection (spherical + ellipsoidal).
 //
 // Formula source: Snyder PP1395 ch. 7; PROJ 9.8.1 src/projections/merc.cpp.
 // y = a·factor·ψ(φ) with ψ the isometric latitude, so the kernel is a thin
-// wrapper over geolib's isometric latitude — no new latitude algebra
-// (FORMULA-NOTES.md §4).
+// wrapper over geolib's isometric latitude — no new latitude algebra.
 //
 // Kernel unit: radians in, metres out.
 //
-// Two PROJ 9.8.1 details that the day0 probing got wrong and pyproj settled
-// (re-verified here, see FORMULA-NOTES.md §4):
+// Two PROJ 9.8.1 details worth stating explicitly (pyproj-verified):
 //   1. +lat_ts present (any value, INCLUDING 0): factor = msfn(lat_ts) =
 //      cos φs / sqrt(1 − e² sin²φs) (sphere: cos φs) and +k_0 is IGNORED —
 //      PROJ *replaces* k0 with msfn(lat_ts), it does not multiply.
 //   2. +lat_ts absent: factor = +k_0 (default 1). |lat_ts| = 90 is rejected.
-// The frozen §2.3 kernel signature has no k0, so the adapter applies k0 as a
+// The kernel signature has no k0, so the adapter applies k0 as a
 // post-factor exactly in the no-lat_ts branch.
 //
 // Numerics: PROJ evaluates the isometric latitude as asinh(tan φ) −
@@ -88,7 +85,7 @@ func (q *mercKernel) inverse(x, y float64) (lon, lat float64, ok bool) {
 	return q.lon0 + x/(q.a*q.factor), phi, true
 }
 
-// —— frozen contract entry points (COORDINATION §2.3) ——
+// —— adapter entry points ——
 
 func mercForward(a, b, latTS, lon0 float64, lon, lat float64) (x, y float64) {
 	return newMercKernel(a, b, latTS, lon0).forward(lon, lat)
@@ -159,7 +156,7 @@ func (s *mercProj) Inverse(x, y float64) (float64, float64, error) {
 	// unbounded (|x| up to 1e12 m in the golden probe = 1.6e5 rad), and taking
 	// 180/pi first amplifies the double noise past the 1e-9 deg gate. PROJ's
 	// pipeline applies adjlon in radians too. geoNormLon then only folds the
-	// +180 boundary to the frozen [-180, 180).
+	// +180 boundary to the [-180, 180) range.
 	return geoNormLon(geoRadToDeg(geoAdjLonPi(lon))), geoRadToDeg(lat), nil
 }
 

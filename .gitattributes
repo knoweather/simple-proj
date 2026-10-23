@@ -1,10 +1,7 @@
-# 源码统一 LF 行尾,根除 Windows core.autocrlf 反复 churn。
-# PROGRESS-B C#11 的意图是"仓库存 LF、gofmt 以 LF 规范形为准",但本机 autocrlf=true
-# 实际让工作树与仓库 blob 都是 CRLF,导致 gofmt 每次都报 diff。这里用 .gitattributes
-# 把全仓文本锁成 eol=lf,真正落地 C#11,CI 与本地 checkout 都不再抖动。
+# Keep the repository and every checkout at LF, independent of core.autocrlf.
 * text=auto eol=lf
 
-# 显式列出源码类型(可选,text=auto 已覆盖;这里仅为可读性)
+# Listed explicitly for readability; text=auto already covers these.
 *.go    text eol=lf
 *.py    text eol=lf
 *.json  text eol=lf

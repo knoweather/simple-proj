@@ -68,7 +68,7 @@ func angDiffDeg(a, b float64) float64 {
 }
 
 const (
-	geodDistTol = 1e-6 // m(COORDINATION §2.5 同口径)
+	geodDistTol = 1e-6 // m(与库内其他数值门槛同口径)
 	geodAzTol   = 1e-9 // 度
 )
 

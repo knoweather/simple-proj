@@ -1,11 +1,11 @@
 package proj
 
-// tmerc_test.go — AI-B's golden consumer for the Transverse Mercator fixture
+// tmerc_test.go — golden consumer for the Transverse Mercator fixture
 // (+proj=tmerc +lat_0=0 +lon_0=105 +k=0.9996 +ellps=WGS84). Shared loader lives
-// in golden_test.go (C#6 in PROGRESS-B.md).
+// in golden_test.go.
 //
-// Tolerances: COORDINATION §2.5 — forward <= 1e-6 m absolute (relative floor of
-// C#3), inverse <= 1e-9 deg absolute, round-trip <= 1e-9 deg.
+// Tolerances: forward <= 1e-6 m absolute (relative floor of tol),
+// inverse <= 1e-9 deg absolute, round-trip <= 1e-9 deg.
 //
 // Every fixture point sits at least 5 deg from the central meridian (the grid
 // steps 11.25 deg around lon_0 = 105), so PROJ's auto dispatch (3 deg switch to
@@ -24,7 +24,7 @@ func TestGoldenTmerc(t *testing.T) {
 	p := goldenParams(g.CRS)
 	a, b := ellipsoidFor(p, g.CRS)
 	k0 := p["k_0"]
-	if k0 <= 0 { // the fixture writes +k=...: goldenParams has no alias, A's Parse does
+	if k0 <= 0 { // the fixture writes +k=...: goldenParams has no alias, Parse does
 		k0 = p["k"]
 	}
 	if k0 <= 0 { // truly absent: PROJ default
@@ -88,7 +88,7 @@ func TestGoldenTmerc(t *testing.T) {
 		len(g.Forward), maxFwd, len(g.Inverse), maxInv, len(g.Specials))
 }
 
-// TestTmercAdapter runs the fixture CRS through the full contract path
+// TestTmercAdapter runs the fixture CRS through the full public path
 // (Parse → NewProjection → Forward/Inverse), including the |Ce| domain edge
 // (PROJ: PROJ_ERR_COORD_TRANSFM_OUTSIDE_PROJECTION_DOMAIN).
 func TestTmercAdapter(t *testing.T) {
@@ -224,8 +224,8 @@ func TestTmercVariants(t *testing.T) {
 	}
 }
 
-// TestTmercFrozenSignature exercises the frozen §2.3 entry points directly.
-func TestTmercFrozenSignature(t *testing.T) {
+// TestTmercKernelSignature exercises the kernel entry points directly.
+func TestTmercKernelSignature(t *testing.T) {
 	g := loadGolden(t, "golden_tmerc.json")
 	p := goldenParams(g.CRS)
 	a, b := ellipsoidFor(p, g.CRS)
@@ -261,7 +261,7 @@ func TestTmercFrozenSignature(t *testing.T) {
 
 // errorsIsDomain uses errors.Is (not ==) so DomainError-wrapped domain
 // failures still match — proj.go's batch judge uses errors.Is for the same
-// reason (COORDINATION §2.5: ErrDomain stays the single sentinel).
+// reason (ErrDomain stays the single sentinel).
 func errorsIsDomain(err error) bool {
 	return errors.Is(err, ErrDomain)
 }

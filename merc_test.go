@@ -1,10 +1,10 @@
 package proj
 
-// merc_test.go — AI-B's golden consumer for the Mercator fixture (spherical,
-// +lat_ts=0 — i.e. EPSG:3857-like). Shared loader lives in golden_test.go (C#6).
+// merc_test.go — golden consumer for the Mercator fixture (spherical,
+// +lat_ts=0 — i.e. EPSG:3857-like). Shared loader lives in golden_test.go.
 //
-// Tolerances: COORDINATION §2.5 — forward <= 1e-6 m absolute, inverse <= 1e-9
-// deg absolute, round-trip <= 1e-9 deg.
+// Tolerances: forward <= 1e-6 m absolute, inverse <= 1e-9 deg absolute,
+// round-trip <= 1e-9 deg.
 
 import (
 	"math"
@@ -43,10 +43,10 @@ func TestGoldenMerc(t *testing.T) {
 		}
 		lon, lat = geoNormLon(geoRadToDeg(geoAdjLonPi(lon))), geoRadToDeg(lat)
 		d := math.Max(lonDiff(lon, r.Lon), math.Abs(lat-r.Lat))
-		// Inverse tolerances: COORDINATION §2.5 says 1e-9 deg absolute. For the
+		// Inverse tolerance: 1e-9 deg absolute. For the
 		// extreme probe (x = y = 1e12 m) the radian longitude is ~1.6e5, whose
 		// double ulp alone is ~1.7e-9 deg — no path can match pyproj tighter
-		// there. Extend C#3's relative floor to the inverse axis: the noise is
+		// there. Extend the relative floor to the inverse axis: the noise is
 		// ~2.3e-16 relative on the un-normalized longitude.
 		invTol := math.Max(1e-9, math.Abs(r.X)/a*180/math.Pi*2.3e-16)
 		if d > invTol {
@@ -90,7 +90,7 @@ func TestMercPole(t *testing.T) {
 	}
 }
 
-// TestMercAdapter runs the fixture CRS through the full contract path and checks
+// TestMercAdapter runs the fixture CRS through the full public path and checks
 // the setup guards (pyproj 3.8.0 verified).
 func TestMercAdapter(t *testing.T) {
 	g := loadGolden(t, "golden_merc.json")
@@ -123,7 +123,7 @@ func TestMercAdapter(t *testing.T) {
 		}
 	}
 
-	// EPSG:3857 alias (A's crs.go maps it to exactly this merc string):
+	// EPSG:3857 alias (crs.go maps it to exactly this merc string):
 	// (2.5, 45) on the WGS84 sphere, factor = 1.
 	c3857, err := Parse("EPSG:3857")
 	if err != nil {
@@ -164,7 +164,7 @@ func TestMercAdapter(t *testing.T) {
 }
 
 // TestMercEllipsoidLatTs pins the +k_0 semantics PROJ 9.8.1 actually implements
-// (re-verified with pyproj 3.8.0; the day0 note had 1/msfn and got it backwards):
+// (re-verified with pyproj 3.8.0):
 //   - +lat_ts present ⇒ factor = msfn(lat_ts) and +k_0 is IGNORED;
 //   - +lat_ts absent   ⇒ factor = +k_0;
 //   - |lat_ts| = 90     ⇒ setup error.
@@ -242,8 +242,8 @@ func TestMercEllipsoidLatTs(t *testing.T) {
 	}
 }
 
-// TestMercFrozenSignature exercises the frozen §2.3 entry points directly.
-func TestMercFrozenSignature(t *testing.T) {
+// TestMercKernelSignature exercises the kernel entry points directly.
+func TestMercKernelSignature(t *testing.T) {
 	g := loadGolden(t, "golden_merc.json")
 	p := goldenParams(g.CRS)
 	a, b := ellipsoidFor(p, g.CRS)

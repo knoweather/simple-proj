@@ -6,7 +6,7 @@ import (
 )
 
 // impl_geos.go — Geostationary Satellite View(sweep x/y,球/椭球)。
-// Owner: AI-A。公式口径 PROJ 9.8 projections/geos.cpp(参考实现,重写为 Go):
+// 公式口径 PROJ 9.8 projections/geos.cpp(参考实现,重写为 Go):
 //
 //	设置(归一到 a=1):radius_g_1 = h/a;radius_g = 1 + radius_g_1;
 //	                    C = radius_g² − 1;
@@ -17,7 +17,7 @@ import (
 //	球体:forward 无可见性检查(全盘可见,PROJ 语义);inverse 同构(半径=1)。
 //	尺度:投影内 a-归一,显式乘 a 完成(同 PROJ pj_fwd)。
 //
-// sweep 语义:缺省 "y"(PROJ ≥ 6,决策 D1 paramString);+sweep=x → flip_axis。
+// sweep 语义:缺省 "y"(PROJ ≥ 6 的 paramString 缺省);+sweep=x → flip_axis。
 // k_0 被 geos 忽略(与 eqc 同为方位类,PROJ 语义)。
 
 // geosProj geos 投影实例(不可变,线程安全)。
@@ -74,10 +74,10 @@ func newGeos(c *CRS) (Projection, error) {
 	return p, nil
 }
 
-// CRS 应回传绑定实例(契约 §2.3)。
+// CRS 应回传绑定实例。
 func (p *geosProj) CRS() *CRS { return p.crs }
 
-// errGeosDomain geos 定义域外(可见性/det),契约 (NaN,NaN,ErrDomain)。
+// errGeosDomain geos 定义域外(可见性/det),返回 (NaN,NaN,ErrDomain)。
 func errGeosDomain() error {
 	return ErrDomain
 }

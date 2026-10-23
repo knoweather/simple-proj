@@ -1,10 +1,10 @@
 package proj
 
-// stere_test.go — AI-B's golden consumer for the stereographic fixture. Shared loader
-// lives in golden_test.go (see C#6 in PROGRESS-B.md).
+// stere_test.go — golden consumer for the stereographic fixture. Shared loader
+// lives in golden_test.go.
 //
-// Tolerances: COORDINATION §2.5 — forward <= 1e-6 m absolute (with the relative floor
-// of C#3), inverse <= 1e-9 deg absolute, round-trip <= 1e-9 deg.
+// Tolerances: forward <= 1e-6 m absolute (with the relative floor of tol),
+// inverse <= 1e-9 deg absolute, round-trip <= 1e-9 deg.
 
 import (
 	"errors"
@@ -117,9 +117,9 @@ func TestStereEffectiveK(t *testing.T) {
 	}
 }
 
-// TestStereFrozenSignature exercises the frozen §2.3 entry points directly
+// TestStereKernelSignature exercises the kernel entry points directly
 // (stereForward/stereInverse), which the adapter tests do not reach.
-func TestStereFrozenSignature(t *testing.T) {
+func TestStereKernelSignature(t *testing.T) {
 	g := loadGolden(t, "golden_stere.json")
 	p := goldenParams(g.CRS)
 	a, b := ellipsoidFor(p, g.CRS)
@@ -148,9 +148,9 @@ func TestStereFrozenSignature(t *testing.T) {
 	}
 }
 
-// TestStereAdapter runs the golden points through the full contract path
-// (Parse → NewProjection → Forward/Inverse), which is what PROGRESS-A.md C#2 asked
-// for: the kernel-only tests leave the adapter and the register path uncovered.
+// TestStereAdapter runs the golden points through the full public path
+// (Parse → NewProjection → Forward/Inverse): the kernel-only tests leave the
+// adapter and the register path uncovered.
 func TestStereAdapter(t *testing.T) {
 	g := loadGolden(t, "golden_stere.json")
 	c, err := Parse(g.CRS)
@@ -183,7 +183,7 @@ func TestStereAdapter(t *testing.T) {
 		}
 	}
 
-	// Illegal input must be a plain error, not ErrDomain (§2.5).
+	// Illegal input must be a plain error, not ErrDomain.
 	if _, _, err := p.Forward(0, 91); err == nil || errors.Is(err, ErrDomain) {
 		t.Fatalf("lat=91 should be a plain error, got %v", err)
 	}
@@ -193,7 +193,7 @@ func TestStereAdapter(t *testing.T) {
 }
 
 // TestStereAspects covers the three projection aspects (equatorial lat_0=0,
-// oblique lat_0=45, polar) through the full contract path. The golden fixture
+// oblique lat_0=45, polar) through the full public path. The golden fixture
 // only exercises the polar aspect (lat_0=90), and TestStereVariants only pins a
 // couple of oblique forward points — so the equatorial/oblique FORWARD and the
 // equatorial INVERSE branches were unverified. Values are pyproj 3.8.0 /
@@ -242,7 +242,7 @@ func TestStereAspects(t *testing.T) {
 	}
 }
 
-// TestStereRoundTrip is the "at least 3 sanity checks" gate from DESIGN §2.3,
+// TestStereRoundTrip is the "at least 3 sanity checks" gate,
 // run through our own kernel rather than through pyproj.
 func TestStereRoundTrip(t *testing.T) {
 	g := loadGolden(t, "golden_stere.json")

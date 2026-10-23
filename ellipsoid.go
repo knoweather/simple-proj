@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Ellipsoid(A 拥有,结构冻结 §2.2)。
+// Ellipsoid 椭球参数(长短半轴、扁率、偏心率及其派生量)。
 type Ellipsoid struct {
 	A, B   float64 // 长短半轴(米);正球体 A == B
 	F      float64 // 扁率
@@ -42,13 +42,13 @@ var ellpsRefTable = map[string]ellpsRef{
 	"sphere":     {6370997.0, 0.0, "Normal Sphere (r=6370997)"},
 }
 
-// wgs84Ref 无任何椭球信息时的默认(DESIGN §2.2 优先级末位)。
+// wgs84Ref 无任何椭球信息时的默认(优先级末位)。
 var wgs84Ref = ellpsRef{6378137.0, 298.257223563, "默认 WGS 84"}
 
-// EllipsoidFromParams 由参数组合推导椭球(结构冻结 §2.2 签名)。
+// EllipsoidFromParams 由参数组合推导椭球。
 //
-// 优先级(**按 pyproj 3.8.0 / PROJ 9.8.1 实测校准**,不是 DESIGN 原文的
-// 「+ellps 盖过 +a/+b」):
+// 优先级(**按 pyproj 3.8.0 / PROJ 9.8.1 实测校准**;直觉上的「+ellps 盖过
+// +a/+b」并不成立):
 //
 //	+R > (+b / +rf 覆盖) > +ellps 提供默认形状 > +a 覆盖长半轴 > 默认 WGS84
 //

@@ -6,9 +6,8 @@ import (
 )
 
 // GRIBEllipsoid 把 GRIB2 模板 3.x 的 shape_of_the_earth(WMO 表 3.2)映射到
-// Ellipsoid(结构冻结 §2.2);解码语义与取值从 simple-grib grid/definition.go
-// 的 earthDimension/Radius/oblate 分支平移(ecCodes grib2
-// template.3.shape_of_the_earth.def 已在 CT133 上核实)。
+// Ellipsoid;解码语义与取值对齐 ecCodes 的
+// grib2/template.3.shape_of_the_earth.def(维度编码与 oblate 判定同其定义)。
 // 维度编码:值 = raw × 10^(-scale);scale == 0xFF(unsigned[1] 缺失哨兵)或
 // raw 全一(0xFFFFFFFF)视作"编码缺失"。
 //
@@ -16,10 +15,10 @@ import (
 //
 //	0  正球 R=6367470			1  正球 R=raw×10⁻ˢᶜᵃˡᵉ(米,生产者给定)
 //	2  IAG 1967:a=6378160, f=1/298.25
-//	3  生产者 double 双轴(km)→ 契约缺口,见 PROGRESS-A.md C#1
+//	3  生产者双轴(km)→ 用 GRIBEllipsoidAxes 解码
 //	4  WGS84:a=6378137, f=1/298.257223563
 //	5  WGS84:a=6378137, b=6356752.3142(显式短轴)
-//	6  正球 R=6371229(NCEP)	7  生产者双轴(m)→ 契约缺口,C#1
+//	6  正球 R=6371229(NCEP)	7  生产者双轴(m)→ 用 GRIBEllipsoidAxes 解码
 //	8  正球 R=6371200			9  Airy 1830(OSGB):a=6377563.396
 //	10 WGS84 地心修正:同半长轴	11 太阳:正球 R=695990000
 //
@@ -39,9 +38,9 @@ func GRIBEllipsoid(shape int, scale uint8, raw uint32) (Ellipsoid, error) {
 		return newEllipsoid(r, r)
 	case 2: // IAG 1967(GRS 67 同轴): a=6378160, f=1/298.25
 		return newEllipsoid(6378160.0, 6378160.0*(1-1/298.25))
-	case 3, 7: // 生产者双轴:major/minor 两组 (scale,raw) —— 走 GRIBEllipsoidAxes(C#1-ACK)
+	case 3, 7: // 生产者双轴:major/minor 两组 (scale,raw) —— 走 GRIBEllipsoidAxes
 		return Ellipsoid{}, fmt.Errorf(
-			"proj: GRIBEllipsoid: shape %d 需要 major+minor 双轴,请用 GRIBEllipsoidAxes(%s)", shape, "PROGRESS-A C#1;原函数保留单维/固定形状")
+			"proj: GRIBEllipsoid: shape %d 需要 major+minor 双轴,请用 GRIBEllipsoidAxes(%s)", shape, "本函数只接受单轴或固定形状")
 	case 4: // WGS84(扁率形式)
 		return newEllipsoid(6378137.0, 6378137.0*(1-1/298.257223563))
 	case 5: // WGS84(显式短轴)
@@ -61,8 +60,7 @@ func GRIBEllipsoid(shape int, scale uint8, raw uint32) (Ellipsoid, error) {
 	}
 }
 
-// GRIBEllipsoidAxes 生产者双轴形状(shape 3 = km,shape 7 = m)的完整解码
-// (C#1,owner=A;B 在 PROGRESS-B.md 回执 C#1-ACK 后落地):
+// GRIBEllipsoidAxes 生产者双轴形状(shape 3 = km,shape 7 = m)的完整解码:
 //
 //	GRIBEllipsoidAxes(shape, majorScale, majorRaw, minorScale, minorRaw)
 //
@@ -97,8 +95,7 @@ func GRIBEllipsoidAxes(shape int, majorScale uint8, majorRaw uint32, minorScale 
 }
 
 // gribDimension 解码生产者给定维度:raw × 10^(-scale);缺失哨兵 → (NaN, false)。
-// (语义与 simple-grib grid/definition.go earthDimension 完全一致,单位换算由
-// 调用方承担;本契约口径下 shape 1 的维度单位是米。)
+// (语义同 ecCodes 的维度解码,单位换算由调用方承担;shape 1 的维度单位是米。)
 func gribDimension(raw uint32, scale uint8) (float64, bool) {
 	const (
 		scaleMissing uint8  = 0xFF

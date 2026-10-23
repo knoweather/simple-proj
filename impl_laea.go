@@ -1,19 +1,18 @@
 package proj
 
-// impl_laea.go — Lambert azimuthal equal-area projection. Owner: AI-B (COORDINATION §1).
+// impl_laea.go — Lambert azimuthal equal-area projection.
 //
 // Formula source: Snyder, "Map Projections — A Working Manual" (USGS PP 1395), ch. 14
 // (ellipsoidal azimuthal equal-area). Structure cross-checked against PROJ 9.8.1
-// src/projections/laea.cpp through the pyproj golden fixtures. Rewritten, not copied
-// (COORDINATION §6 red line 2). See FORMULA-NOTES.md §2.
+// src/projections/laea.cpp through the pyproj golden fixtures. Rewritten, not copied.
 //
 // Kernel unit: radians in, metres out. Inverse returns ok == false for out-of-domain;
 // the adapter turns that into ErrDomain.
 //
 // Note on +k_0: PROJ's laea does not use k_0 at all (verified with pyproj: the same
-// point gives identical coordinates for +k_0=1 and +k_0=2). The frozen signature
-// §2.3 has no k0 argument for laea, which is consistent. The adapter therefore does
-// not multiply by k_0 either.
+// point gives identical coordinates for +k_0=1 and +k_0=2). The kernel signature has
+// no k0 argument for laea, which is consistent. The adapter therefore does not
+// multiply by k_0 either.
 
 import (
 	"fmt"
@@ -36,7 +35,7 @@ const laeaEPS10 = 1e-10
 const laeaMinRho = 1e-15
 
 // laeaKernel holds the precomputed constants. Immutable, so a Projection built on it
-// is thread-safe (COORDINATION §2.5).
+// is thread-safe.
 type laeaKernel struct {
 	a, e, es float64
 	lat0     float64 // radians
@@ -205,7 +204,7 @@ func (q *laeaKernel) inverse(x, y float64) (lon, lat float64, ok bool) {
 	}
 }
 
-// —— frozen contract entry points (COORDINATION §2.3) ——
+// —— adapter entry points ——
 
 func laeaForward(a, b, lat0, lon0 float64, lon, lat float64) (x, y float64) {
 	return newLaeaKernel(a, b, lat0, lon0).forward(lon, lat)

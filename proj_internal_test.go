@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// proj_internal_test.go — 补 A 轨残余覆盖:nil/错误分支、注册表 panic、
+// proj_internal_test.go — 内部路径覆盖:nil/错误分支、注册表 panic、
 // EPSG 特例(900913/4269)、CRS() 绑定回传。
 
 func TestStringNilCRS(t *testing.T) {

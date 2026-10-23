@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-# Owner: AI-B (single-track: 本会话)
-# 生成 xcheck/golden_*.json —— pyproj 是金标唯一事实源(参照 DESIGN.md §3)。
+# 生成 xcheck/golden_*.json —— pyproj 是金标唯一事实源。
 # 运行: python xcheck/gen_golden.py
 import json
 import math

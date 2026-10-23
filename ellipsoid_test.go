@@ -17,7 +17,7 @@ func nearF(t *testing.T, name string, got, want, tol float64) {
 	}
 }
 
-// TestEllipsoidTableEllps 内置表 + 组合推导主链路(优先级见 DESIGN §2.2)。
+// TestEllipsoidTableEllps 内置表 + 组合推导主链路(优先级见 EllipsoidFromParams)。
 func TestEllipsoidTableEllps(t *testing.T) {
 	cases := []struct {
 		name         string
@@ -70,13 +70,13 @@ func TestEllipsoidTableEllps(t *testing.T) {
 			wantA: 6378137, wantB: 6378137, wantSphere: true,
 		},
 		{
-			name:      "+R 压倒 ellps(DESIGN 优先级)",
+			name:      "+R 压倒 ellps(椭球优先级)",
 			params:    map[string]float64{"a": 6378137, "b": 6371000, "R": 5_000_000},
 			ellpsName: "intl",
 			wantA:     5_000_000, wantB: 5_000_000, wantSphere: true,
 		},
 		{
-			// N.B. DESIGN §2.2 原文写的是「+ellps 盖过 +a/b」,但 pyproj 3.8.0 /
+			// N.B. 直觉上以为「+ellps 盖过 +a/b」,但 pyproj 3.8.0 /
 			// PROJ 9.8.1 实测是反过来的:+a/+b/+rf 覆盖 +ellps 打底的形状
 			// (2026-10-22 校准,见 EllipsoidFromParams 注释)。以实测为准。
 			name:      "+a/+b 覆盖 +ellps(PROJ 实测)",
@@ -166,7 +166,7 @@ func TestEllipsoidErrors(t *testing.T) {
 	}
 }
 
-// TestErrDomainSentinel 契约哨兵:ErrDomain 必须可被 errors.Is 识别。
+// TestErrDomainSentinel 哨兵检查:ErrDomain 必须可被 errors.Is 识别。
 func TestErrDomainSentinel(t *testing.T) {
 	wrapped := errors.New("x: " + ErrDomain.Error())
 	if !errors.Is(wrapped, ErrDomain) {

@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// impl_geos_test.go — 参照值来自 probe9.py / probe9b.py
-// (pyproj 3.8.0 / PROJ 9.8.1 @ 2026-10-17)。golden 侧(椭球双 sweep)由
-// xcheck 覆盖;本文件补 golden 未覆盖的球体路径/错误面/口径特例。
+// impl_geos_test.go — 参照值来自 pyproj 3.8.0 / PROJ 9.8.1 实测(2026-10-17)。
+// golden 侧(椭球双 sweep)由 xcheck 覆盖;本文件补 golden 未覆盖的球体路径/
+// 错误面/口径特例。
 const (
 	geosFwdTol = 1e-6 // m
 	geosInvTol = 1e-9 // 度
@@ -31,7 +31,7 @@ func mustGeos(t *testing.T, crs string) *geosProj {
 	return g
 }
 
-// sphere grid(lon = 140.7+dlon,lat ∈ ±60):全部在视界内,forward/inverse 双向参照(probe9b)
+// sphere grid(lon = 140.7+dlon,lat ∈ ±60):全部在视界内,forward/inverse 双向参照(pyproj)
 func TestGeosSphereGrid(t *testing.T) {
 	p := mustGeos(t, "+proj=geos +h=35785863 +a=6378137 +b=6378137 +lon_0=140.7")
 	var maxF, maxI float64
@@ -71,7 +71,7 @@ func TestGeosSphereGrid(t *testing.T) {
 	t.Logf("sphere 网格最大偏差: forward %.3g m | inverse %.3g°", maxF, maxI)
 }
 
-// sphere sweep=x forward 参照(probe9;注意球体 forward 无可见性检查 ——
+// sphere sweep=x forward 参照(pyproj;注意球体 forward 无可见性检查 ——
 // 界外点也给出确定性输出,与 PROJ 一致,故逆不建议判等)
 func TestGeosSphereSweepXForward(t *testing.T) {
 	px := mustGeos(t, "+proj=geos +h=35785863 +a=6378137 +b=6378137 +lon_0=140.7 +sweep=x")
@@ -101,7 +101,7 @@ func TestGeosSphereSweepXForward(t *testing.T) {
 	}
 }
 
-// sweep 缺省 === y(PROJ≥6,决策 D1;probe9 实测)
+// sweep 缺省 === y(PROJ≥6 的缺省;pyproj 实测)
 func TestGeosSweepDefault(t *testing.T) {
 	pd := mustGeos(t, "+proj=geos +h=35785863 +a=6378137 +b=6378137 +lon_0=140.7")
 	py := mustGeos(t, "+proj=geos +h=35785863 +a=6378137 +b=6378137 +lon_0=140.7 +sweep=y")
@@ -115,7 +115,7 @@ func TestGeosSweepDefault(t *testing.T) {
 	}
 }
 
-// 椭球域外:forward 可见性 + inverse det(probe9:sweep=y lon_0=0 东西超界 → inf)
+// 椭球域外:forward 可见性 + inverse det(pyproj:sweep=y lon_0=0 东西超界 → inf)
 func TestGeosEllipsoidDomain(t *testing.T) {
 	p := mustGeos(t, "+proj=geos +h=35785863 +ellps=WGS84 +lon_0=0 +sweep=y")
 	for _, pt := range [][2]float64{{105.2, 30.0}, {170.0, 10.0}} {
@@ -124,7 +124,7 @@ func TestGeosEllipsoidDomain(t *testing.T) {
 			t.Errorf("域外 Forward(%v,%v) 期望 (NaN,NaN,ErrDomain), got (%v,%v,%v)", pt[0], pt[1], x, y, err)
 		}
 	}
-	// 域内点(probe9)
+	// 域内点(pyproj 实测)
 	x, y, err := p.Forward(-30.5, -60.0)
 	if err != nil {
 		t.Fatalf("Forward(-30.5,-60): %v", err)
@@ -142,7 +142,7 @@ func TestGeosEllipsoidDomain(t *testing.T) {
 // 错误面:h 缺省/非法、sweep 非法、输入域错误
 func TestGeosErrors(t *testing.T) {
 	for _, crs := range []string{
-		"+proj=geos +a=6378137 +b=6378137",            // h 缺省 0 → rg1≤0,PROJ 亦报错(probe9)
+		"+proj=geos +a=6378137 +b=6378137",            // h 缺省 0 → rg1≤0,PROJ 亦报错(pyproj 实测)
 		"+proj=geos +h=0 +a=6378137 +b=6378137",       // h=0
 		"+proj=geos +h=-1e10 +a=6378137 +b=6378137",   // 负
 		"+proj=geos +sweep=q +h=35785863 +a=6378137",  // sweep 非法

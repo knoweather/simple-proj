@@ -1,10 +1,10 @@
 package proj
 
-// crs_meta_test.go — IsGeographic / Units / Equals(第二轮 goproj 评审的融合)。
+// crs_meta_test.go — IsGeographic / Units / Equals 的测试。
 //
-// goproj 里那几个 PROJ 查询(proj_angular_input / proj_degree_input …)的用途是
-// "让调用方知道该喂度还是米";本库的约定固定,但调用方仍需要机器可读的判断,
-// 于是有 IsGeographic / Units。Equals 对应 pyproj 的 CRS.equals。
+// PROJ 的 proj_angular_input / proj_degree_input 这类查询是为了"让调用方知道该
+// 喂度还是米";本库的约定固定,但调用方仍需要机器可读的判断,于是有
+// IsGeographic / Units。Equals 对应 pyproj 的 CRS.equals。
 
 import "testing"
 

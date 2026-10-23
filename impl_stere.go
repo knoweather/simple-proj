@@ -1,14 +1,14 @@
 package proj
 
-// impl_stere.go — Stereographic projection. Owner: AI-B (COORDINATION §1).
+// impl_stere.go — Stereographic projection.
 //
 // Formula source: Snyder, "Map Projections — A Working Manual" (USGS PP 1395),
 // ch. 13 (general/polar aspect, ellipsoidal). Structure cross-checked against
 // PROJ 9.8.1 src/projections/stere.cpp through the pyproj golden fixtures.
-// Rewritten, not copied (COORDINATION §6 red line 2). See FORMULA-NOTES.md.
+// Rewritten, not copied.
 //
-// Kernel unit: radians in, metres out (COORDINATION §2.5). Inverse returns
-// ok == false for out-of-domain; the adapter turns that into ErrDomain.
+// Kernel unit: radians in, metres out. Inverse returns ok == false for
+// out-of-domain; the adapter turns that into ErrDomain.
 
 import (
 	"fmt"
@@ -27,7 +27,7 @@ const (
 const stereEPS10 = 1e-10
 
 // stereKernel holds the precomputed constants. Immutable, so a Projection built on
-// it is thread-safe (COORDINATION §2.5).
+// it is thread-safe.
 type stereKernel struct {
 	a, e  float64
 	lat0  float64 // radians
@@ -39,8 +39,8 @@ type stereKernel struct {
 	cosX1 float64
 }
 
-// stereEffectiveK folds +lat_ts into the plain k0 so that the frozen kernel
-// signature (a, b, lat0, lon0, k, lon, lat) stays untouched. The kernel always builds
+// stereEffectiveK folds +lat_ts into the plain k0 so that the kernel signature
+// (a, b, lat0, lon0, k, lon, lat) stays untouched. The kernel always builds
 // akm1 from k as "2k / base" (polar) or "2k cos(lat0)/sqrt(1-e2 sin^2 lat0)"
 // (OBLIQ/EQUIT), so k must be the value that reproduces PROJ's akm1 under that rule.
 //
@@ -234,10 +234,10 @@ func atan2Safe(x, y float64) float64 {
 	return math.Atan2(x, y)
 }
 
-// —— frozen contract entry points (COORDINATION §2.3) ——
+// —— adapter entry points ——
 //
-// These are the exact signatures A's proj.go will call. They assume lat_ts is
-// already folded into k (see stereEffectiveK); the adapter does that once.
+// These are the signatures the adapters call. They assume lat_ts is already
+// folded into k (see stereEffectiveK); the adapter does that once.
 
 func stereForward(a, b, lat0, lon0, k float64, lon, lat float64) (x, y float64) {
 	return newStereKernel(a, b, lat0, lon0, k).forward(lon, lat)
@@ -247,7 +247,7 @@ func stereInverse(a, b, lat0, lon0, k float64, x, y float64) (lon, lat float64, 
 	return newStereKernel(a, b, lat0, lon0, k).inverse(x, y)
 }
 
-// —— adapter (contract landed 2026-10-17: proj.go / crs.go are A's) ——
+// —— adapter ——
 
 type stereProj struct {
 	crs    *CRS

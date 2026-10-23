@@ -1,6 +1,6 @@
 package proj
 
-// geolib.go — shared spherical/ellipsoidal math helpers. Owner: AI-B (COORDINATION §1).
+// geolib.go — shared spherical/ellipsoidal math helpers.
 //
 // Everything here is in radians, stateless and allocation-free. Only the adapter
 // (impl_*.go) converts degrees/metres; these helpers never do.
@@ -12,11 +12,11 @@ package proj
 import "math"
 
 // Unit helpers used by the impl_*.go adapters. Prefixed with geo* so they cannot
-// collide with whatever A lands in proj.go (COORDINATION §1: these files are A's).
+// collide with names in proj.go.
 func geoDegToRad(d float64) float64 { return d * math.Pi / 180 }
 func geoRadToDeg(r float64) float64 { return r * 180 / math.Pi }
 
-// geoNormLon implements the frozen output rule: [-180, 180).
+// geoNormLon implements the output rule: [-180, 180).
 // Go's math.Mod keeps the sign of the dividend, so the negative branch is folded
 // explicitly — otherwise lon = -190 stays -190 instead of becoming 170.
 func geoNormLon(lon float64) float64 {
@@ -86,8 +86,7 @@ func ConformalLat(phi, e float64) float64 {
 
 // —— authalic (equal-area) latitude ——
 //
-// Needed by impl_laea.go (B) and, for the equal-area branch, by A's impl_eqc.go.
-// Raised as C#4 in PROGRESS-B.md so the ownership of this block is explicit.
+// Needed by impl_laea.go and, for the equal-area branch, by impl_eqc.go.
 
 // AuthalicMaxTerms is the number of series terms kept. PROJ 9 evaluates P->n
 // coefficients; the series is already converged by term 8 for every ellipsoid in
@@ -106,7 +105,7 @@ const AuthalicMaxTerms = 12
 // and authalic latitude mu on the authalic sphere. The integrand is
 // (1 - e2 sin^2 t)^-2, which is where the (i+1) comes from.
 //
-// Caution (this cost me a whole debugging session): the frequently transcribed
+// Caution: the frequently transcribed
 // C_i = ((2i-1)!!/(2i)!!) / (2i+1) is the series for the *meridian arc* integrand
 // (1 - e2 sin^2 t)^-3/2, not for the zone area. Using it gives authalic(45 deg) =
 // 44.9812 deg instead of 44.8717 deg — a 6.4e6 m error in laea forward. Snyder's

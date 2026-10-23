@@ -6,8 +6,8 @@ import (
 )
 
 // impl_latlong.go — latlong/longlat(恒等投影,度)。
-// GRIB 经纬网格与 CF 1D 坐标的直接输入(DESIGN §1.2 #1)。
-// 输入口径(§2.5):经度输入放宽 [−360,360]、纬度 [−90,90],越界或 NaN/Inf
+// GRIB 经纬网格与 CF 1D 坐标的直接输入。
+// 输入口径:经度输入放宽 [−360,360]、纬度 [−90,90],越界或 NaN/Inf
 // 报错(具体 error 不冒充 ErrDomain);输出经度归一化到 [−180,180)。
 
 // latlongProj 恒等投影实例(无状态,线程安全)。
@@ -43,7 +43,7 @@ func (p *latlongProj) Inverse(x, y float64) (lon, lat float64, err error) {
 
 // ---- 共享的输入域助手(同包内供 eqc/geos 等 impl 复用) -------------------
 
-// validLonLat 合法地理输入(§2.5:经度 >±360 或纬度 >±90 非法;NaN/Inf 非法)。
+// validLonLat 合法地理输入(经度 >±360 或纬度 >±90 非法;NaN/Inf 非法)。
 func validLonLat(lon, lat float64) bool {
 	return validX(lon) == nil && validY(lat) == nil
 }
@@ -70,7 +70,7 @@ func validY(lat float64) error {
 	return nil
 }
 
-// invalidLonLatErr 输入域错误(非 ErrDomain,§2.5)。
+// invalidLonLatErr 输入域错误(非 ErrDomain)。
 func invalidLonLatErr(lon, lat float64) error {
 	if err := validX(lon); err != nil {
 		return err
@@ -78,7 +78,7 @@ func invalidLonLatErr(lon, lat float64) error {
 	return validY(lat)
 }
 
-// normLonDeg 输出经度归一化到 [-180, 180)(§2.5)。
+// normLonDeg 输出经度归一化到 [-180, 180)。
 // 边界约定:−180 允许,180 归一为 −180(180° 与 −180° 是同一物理点;
 // xcheck 断言按经度圆周距离比对,x_0/经度往返不受影响)。
 func normLonDeg(lon float64) float64 {

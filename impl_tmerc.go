@@ -1,6 +1,6 @@
 package proj
 
-// impl_tmerc.go — Transverse Mercator projection. Owner: AI-B (COORDINATION §1).
+// impl_tmerc.go — Transverse Mercator projection.
 //
 // Formula source: PROJ 9.8.1 src/projections/tmerc.cpp (default "auto" algorithm:
 // Poder/Engsager etmerc beyond 3° from the central meridian, Evenden/Snyder
@@ -9,8 +9,7 @@ package proj
 // The two algorithms agree to ~1e-9 m at the 3° switch, so the ellipsoidal path
 // here always runs the exact Poder/Engsager series (the golden fixtures were
 // generated behind the auto dispatch; the Snyder column is covered implicitly).
-// Code rewritten from the formulas, not copied (COORDINATION §6 red line 2).
-// See FORMULA-NOTES.md §5.
+// Code rewritten from the formulas, not copied.
 //
 // The exact path is the Gauss-Schreiber composition in "normalized" coordinates:
 //   geodetic φ --(cbg)--> Gaussian/conformal χ --sphere--> complex sph. lat/lon
@@ -99,7 +98,7 @@ var auxMuChiBlock = [21]float64{
 // Maxima coefficient block is a polynomial in n of degree 5-l for F[l].
 // polyval/clenshawDelta/rectifyingRadius are the shared helpers in mlfn.go
 // (same package; PROJ's pj_polyval/pj_clenshaw/pj_rectifying_radius, identical
-// arithmetic — reused instead of duplicated, see PROGRESS-B.md C#10).
+// arithmetic — reused instead of duplicated).
 func auxLatCoeffs(n float64, block *[21]float64) [6]float64 {
 	var F [6]float64
 	d := n
@@ -151,7 +150,7 @@ func tmercClenS(a []float64, sinArgR, cosArgR, sinhArgI, coshArgI float64) (R, I
 }
 
 // tmercKernel holds the precomputed constants. Immutable, so a Projection built
-// on it is thread-safe (COORDINATION §2.5).
+// on it is thread-safe.
 type tmercKernel struct {
 	a, e, es  float64
 	lat0      float64 // radians
@@ -320,7 +319,7 @@ func (q *tmercKernel) inverseSph(x, y float64) (lon, lat float64, ok bool) {
 	return lam, phi, true
 }
 
-// —— frozen contract entry points (COORDINATION §2.3) ——
+// —— adapter entry points ——
 
 func tmercForward(a, b, lat0, lon0, k0 float64, lon, lat float64) (x, y float64) {
 	return newTmercKernel(a, b, lat0, lon0, k0).forward(lon, lat)

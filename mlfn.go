@@ -3,8 +3,6 @@ package proj
 import "math"
 
 // mlfn.go — 子午线弧(meridional arc)与矩形纬度(rectifying latitude)。
-// Owner: AI-A(B 的 geolib 管 等角/等积纬;矩形纬不在 geolib 清单内,在
-// PROGRESS-A 决策 D6 声明过归属)。
 //
 // 口径与 pyproj 3.8 / PROJ 9.8 完全对齐:采用 Karney《On auxiliary latitudes》
 // (Survey Review 56(395),2024;arXiv 2212.05818)的第三扁率 n 六阶级数。
