@@ -11,22 +11,22 @@ import (
 	"strings"
 	"testing"
 
-	proj "github.com/XC-Zero/simple-proj"
+	proj "github.com/knoweather/simple-proj"
 )
 
-// xcheck_test.go —— 金标准消费端(PROGRESS-A 决策 D5):
-// 消费 xcheck/golden_*.json(pyproj 3.8.0 / PROJ 9.8.1 生成,owner=B),对
-// A 轨三投影(latlong / eqc / geos_x / geos_y)做前向/逆向/特例断言。
+// xcheck_test.go —— 金标准消费端:
+// 消费 xcheck/golden_*.json(pyproj 3.8.0 / PROJ 9.8.1 生成),对
+// latlong / eqc / geos_x / geos_y 做前向/逆向/特例断言。
 //
-//   - 数值门槛(COORDINATION §4):forward ≤ 1e-6 m、inverse ≤ 1e-9 度;
-//   - 经度断言用圆周距离(180 与 −180 同物理点;B 生成器对 latlong 在
-//     lon=180 记录原始 180 而本实现归一 −180,D5 口径一致);
-//   - golden 文件缺失 → t.Skip(不阻塞 A 轨 gate,B 生成即收紧,D5);
-//   - 投影 impl 未注册(如 Day3 前的 geos)→ t.Skip,同 D5 哲学;
+//   - 数值门槛:forward ≤ 1e-6 m、inverse ≤ 1e-9 度;
+//   - 经度断言用圆周距离(180 与 −180 同物理点;生成器对 latlong 在
+//     lon=180 记录原始 180 而本实现归一 −180,两侧口径一致);
+//   - golden 文件缺失 → t.Skip(不阻塞其他用例);
+//   - 投影 impl 未注册 → t.Skip,注册后自动收紧为真实断言;
 //   - expectNaN 定义域外特例:Forward 必须 (NaN,NaN,ErrDomain);
 //   - JSON 里 pyproj 直写的 NaN 字面量(geos 远界等):用 nanF 容错解码。
 //
-// 本文件不复制生成器,不识别 B 轨投影(laea/lcc/merc/tmerc/stere)。
+// 本文件不复制生成器,不识别其他投影(laea/lcc/merc/tmerc/stere 由各自测试覆盖)。
 
 const (
 	goldenDir = "."
@@ -51,7 +51,7 @@ func (f *nanF) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// boolLike 宽容布尔:D5 —— B 生成器 quirk 下 expectNaN 既可为 true 也可为 0.0。
+// boolLike 宽容布尔:JSON 里 expectNaN 既可为 true 也可为 0.0。
 type boolLike bool
 
 func (b *boolLike) UnmarshalJSON(raw []byte) error {
@@ -94,7 +94,7 @@ func loadGolden(t *testing.T, file string) (*golden, error) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(goldenDir, file))
 	if err != nil {
-		return nil, err // D5:缺失 → 调用方 Skip
+		return nil, err // 缺失 → 调用方 Skip
 	}
 	if i := strings.Index(string(raw), ": NaN"); i >= 0 {
 		// 只替换值位置的裸 NaN(键名 expectNaN 含 "NaN" 子串,不能宽替换)
@@ -128,7 +128,7 @@ func newXCheckProj(t *testing.T, crs string) proj.Projection {
 	}
 	pr, err := c.NewProjection()
 	if err != nil {
-		t.Skipf("投影 %q 未注册(impl 移交前 xcheck 宽容跳过,D5): %v", c.Proj, err)
+		t.Skipf("投影 %q 未注册(xcheck 宽容跳过): %v", c.Proj, err)
 	}
 	return pr
 }
@@ -223,7 +223,7 @@ func runGolden(t *testing.T, name, file string) {
 	g, err := loadGolden(t, file)
 	if err != nil {
 		if os.IsNotExist(err) {
-			t.Skipf("golden 缺失,宽容跳过(D5): %v", err)
+			t.Skipf("golden 缺失,宽容跳过: %v", err)
 		}
 		t.Fatalf("loadGolden(%s): %v", file, err)
 	}
@@ -231,21 +231,21 @@ func runGolden(t *testing.T, name, file string) {
 		t.Fatalf("%s: golden 无 crs 字段", name)
 	}
 	p := newXCheckProj(t, g.CRS)
-	degrees := name == "latlong" // 度制投影:比对口径用圆周距离(D5)
+	degrees := name == "latlong" // 度制投影:比对口径用圆周距离
 	xcheckForward(t, name, p, g.Forward, degrees)
 	xcheckInverse(t, name, p, g.Inverse, degrees)
 	xcheckSpecials(t, name, p, g.Specials)
 }
 
-// TestXCheck 消费 A 轨三投影的 golden(latlong/eqc;9 份中只消费 A 的，
-// B 轨投影由 B 自己的 PROGRESS-B 流程覆盖,消费端不越权)。
+// TestXCheck 消费 latlong / eqc 的 golden(其余投影由各自的测试覆盖,
+// 消费端不越权)。
 func TestXCheck(t *testing.T) {
 	runGolden(t, "latlong", "golden_latlong.json")
 	runGolden(t, "eqc", "golden_eqc.json")
 }
 
-// TestXCheckGeos geos golden(sweep x/y)。impl 落地(Day3)前宽容跳过,
-// 注册后自动收紧为真实断言(D5)。
+// TestXCheckGeos geos golden(sweep x/y)。impl 未注册时宽容跳过,
+// 注册后自动收紧为真实断言。
 func TestXCheckGeos(t *testing.T) {
 	runGolden(t, "geos_x", "golden_geos_x.json")
 	runGolden(t, "geos_y", "golden_geos_y.json")

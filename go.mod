@@ -1,4 +1,4 @@
-module github.com/XC-Zero/simple-proj
+module github.com/knoweather/simple-proj
 
 go 1.27
 
