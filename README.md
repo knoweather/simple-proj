@@ -23,6 +23,8 @@ on every commit.
 
 - **No cgo.** A pure-Go build cross-compiles and statically links anywhere; no
   PROJ shared library, no C toolchain, no runtime data directory.
+- **Runs everywhere Go does.** No cgo means trivial cross-compilation; the library
+  and its full test suite also build and run as **js/wasm** (verified under Node).
 - **Built for grids.** Packed batch APIs, per-point domain errors, and GRIB
   `shape_of_the_earth` → ellipsoid conversion are first-class.
 - **Verified, not approximated.** Every projection is compared point-by-point

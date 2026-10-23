@@ -40,6 +40,23 @@ jobs:
       - name: test with race detector
         run: go test -race -count=1 ./...
 
+  wasm:
+    name: wasm (js, node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: build
+        run: GOOS=js GOARCH=wasm go build ./...
+      - name: test under Node
+        run: |
+          printf '#!/bin/sh\nexec node "$(go env GOROOT)/lib/wasm/wasm_exec_node.js" "$@"\n' > /tmp/wasm_exec.sh
+          chmod +x /tmp/wasm_exec.sh
+          GOOS=js GOARCH=wasm go test -exec=/tmp/wasm_exec.sh -count=1 ./...
+
   format:
     name: gofmt
     runs-on: ubuntu-latest

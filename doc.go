@@ -14,4 +14,8 @@
 // PROJ 9.8.1: forward within 1e-6 m and inverse within 1e-9 degrees, with
 // relative floors for extreme coordinates. See README.md and the xcheck/
 // fixtures for the reference data and regeneration scripts.
+//
+// The package has no cgo or third-party dependencies. It builds for linux,
+// macOS and Windows, and for js/wasm; the test suite runs under Node's
+// WebAssembly runtime.
 package proj
