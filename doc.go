@@ -17,5 +17,6 @@
 //
 // The package has no cgo or third-party dependencies. It builds for linux,
 // macOS and Windows, and for js/wasm; the test suite runs under Node's
-// WebAssembly runtime.
+// WebAssembly runtime. A JavaScript API for browsers and Node.js lives in the
+// wasm subpackage (global `simpleProj`).
 package proj

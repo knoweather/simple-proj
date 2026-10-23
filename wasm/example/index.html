@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>simple-proj · WASM demo</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+    textarea { width: 100%; height: 3.5rem; font-family: ui-monospace, monospace; }
+    input[type="number"] { width: 8rem; }
+    fieldset { margin: 1rem 0; }
+    #out { background: #f6f6f6; padding: .75rem; white-space: pre-wrap; min-height: 4rem; }
+    #err { color: #c00; }
+    .muted { color: #666; }
+  </style>
+</head>
+<body>
+  <h1>simple-proj · WASM demo</h1>
+  <p class="muted">
+    Projections run entirely in the browser via the <code>simpleProj</code>
+    object. The module keeps parsed CRS handles on the Go side.
+  </p>
+
+  <label>CRS definition<br />
+    <textarea id="def">+proj=geos +h=35785863 +lon_0=140.7 +ellps=WGS84 +sweep=y</textarea>
+  </label>
+  <p><button id="parse">Parse CRS</button> <span id="err"></span></p>
+
+  <fieldset>
+    <legend>Point conversion</legend>
+    <label>lon <input id="lon" type="number" value="140.7" step="any" /></label>
+    <label>lat <input id="lat" type="number" value="30.5" step="any" /></label>
+    <button id="fwd">Forward</button>
+    <button id="inv">Inverse</button>
+    <span class="muted">(x/y use the unit returned by the CRS)</span>
+  </fieldset>
+
+  <fieldset>
+    <legend>Batch</legend>
+    <button id="batch">Forward [0,0, 140.7,30.5, 180,0]</button>
+    <span class="muted">packed [lon0,lat0,...]; domain points become NaN</span>
+  </fieldset>
+
+  <pre id="out">loading wasm…</pre>
+
+  <script src="wasm_exec.js"></script>
+  <script>
+    const out = document.getElementById("out");
+    const err = document.getElementById("err");
+    let handle = 0;
+
+    function show(v) {
+      out.textContent = typeof v === "string" ? v : JSON.stringify(v, null, 2);
+    }
+
+    function fail(e) {
+      err.textContent = String(e && e.error ? e.error : e);
+    }
+
+    function ready() {
+      show("wasm ready — parse a CRS to get a handle");
+    }
+
+    const go = new Go();
+    fetch("main.wasm")
+      .then((r) => r.arrayBuffer())
+      .then((buf) => WebAssembly.instantiate(buf, go.importObject))
+      .then((res) => {
+        go.run(res.instance);
+        setTimeout(ready, 0);
+      })
+      .catch((e) => show("failed to load wasm: " + e));
+
+    document.getElementById("parse").addEventListener("click", () => {
+      err.textContent = "";
+      const r = simpleProj.parse(document.getElementById("def").value.trim());
+      if (r.error) return fail(r);
+      handle = r.id;
+      show(r);
+    });
+
+    document.getElementById("fwd").addEventListener("click", () => {
+      if (!handle) return fail("parse a CRS first");
+      const r = simpleProj.forward(
+        handle,
+        Number(document.getElementById("lon").value),
+        Number(document.getElementById("lat").value)
+      );
+      r.error ? fail(r) : show(r);
+    });
+
+    document.getElementById("inv").addEventListener("click", () => {
+      if (!handle) return fail("parse a CRS first");
+      const r = simpleProj.inverse(
+        handle,
+        Number(document.getElementById("lon").value),
+        Number(document.getElementById("lat").value)
+      );
+      r.error ? fail(r) : show(r);
+    });
+
+    document.getElementById("batch").addEventListener("click", () => {
+      if (!handle) return fail("parse a CRS first");
+      const r = simpleProj.forwardBatch(
+        handle,
+        new Float64Array([0, 0, 140.7, 30.5, 180, 0])
+      );
+      if (r.error) return fail(r);
+      show({ domain: !!r.domain, xy: Array.from(r.xy) });
+    });
+  </script>
+</body>
+</html>

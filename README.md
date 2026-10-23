@@ -78,6 +78,26 @@ x, y, err := tr.Transform(0, 0)
 Runnable versions of these snippets live in [example_test.go](example_test.go)
 and run as part of `go test`.
 
+## WebAssembly (WASM)
+
+The `wasm/` subpackage runs the same projection code in browsers and Node.js,
+with parsed CRS handles kept on the Go side:
+
+```bash
+pwsh wasm/build.ps1      # or ./wasm/build.sh
+```
+
+```js
+const p = simpleProj.parse("+proj=geos +h=35785863 +lon_0=140.7 +ellps=WGS84");
+const { x, y } = simpleProj.forward(p.id, 140.7, 30.5);
+const { xy, domain } = simpleProj.forwardBatch(p.id, new Float64Array([0, 0, 140.7, 30.5]));
+```
+
+`simpleProj` exposes `parse`, `forward`, `inverse`, `forwardBatch`,
+`inverseBatch`, `transform`, `transformBatch`, `info` and `free`. See
+[wasm/README.md](wasm/README.md) for the full API, batch semantics and the
+browser demo.
+
 ## Supported projections
 
 | `+proj=` | Description | Sphere / ellipsoid | Notes |

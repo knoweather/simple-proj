@@ -74,6 +74,25 @@ x, y, err := tr.Transform(0, 0)
 示例代码都有可运行版本（[example_test.go](example_test.go)），随 `go test`
 一起执行，文档不会与 API 漂移。
 
+## WebAssembly（WASM）
+
+`wasm/` 子包让同一套投影代码跑在浏览器和 Node.js 里；解析好的 CRS 句柄
+留在 Go 侧，JS 按句柄调用：
+
+```bash
+pwsh wasm/build.ps1      # 或 ./wasm/build.sh
+```
+
+```js
+const p = simpleProj.parse("+proj=geos +h=35785863 +lon_0=140.7 +ellps=WGS84");
+const { x, y } = simpleProj.forward(p.id, 140.7, 30.5);
+const { xy, domain } = simpleProj.forwardBatch(p.id, new Float64Array([0, 0, 140.7, 30.5]));
+```
+
+`simpleProj` 提供 `parse`、`forward`、`inverse`、`forwardBatch`、
+`inverseBatch`、`transform`、`transformBatch`、`info`、`free`。完整 API、
+批量语义与浏览器 demo 见 [wasm/README.md](wasm/README.md)。
+
 ## 支持的投影
 
 | `+proj=` | 说明 | 球体/椭球 | 备注 |

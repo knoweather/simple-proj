@@ -17,3 +17,7 @@ Thumbs.db
 
 # Python cache from the fixture generators
 __pycache__/
+
+# Generated WASM build artifacts
+wasm/example/main.wasm
+wasm/example/wasm_exec.js

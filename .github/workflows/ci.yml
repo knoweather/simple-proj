@@ -51,6 +51,14 @@ jobs:
           cache: false
       - name: build
         run: GOOS=js GOARCH=wasm go build ./...
+      - name: build front end
+        run: GOOS=js GOARCH=wasm go build ./wasm/...
+      - name: build demo module
+        run: GOOS=js GOARCH=wasm go build -o wasm/example/main.wasm ./wasm/main
+      - name: smoke test JS API
+        run: |
+          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" wasm/example/wasm_exec.js
+          node wasm/example/smoke.js
       - name: test under Node
         run: |
           printf '#!/bin/sh\nexec node "$(go env GOROOT)/lib/wasm/wasm_exec_node.js" "$@"\n' > /tmp/wasm_exec.sh
