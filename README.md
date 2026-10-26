@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" width="200" alt="The Go gopher wearing goggles, holding up two maps: one Mercator, one another projection">
+</p>
+
 # simple-proj
 
 **English** | [简体中文](README.zh-CN.md)
@@ -241,6 +245,12 @@ Parsing is strict: parameters whose semantics are not implemented (`+pm`,
 - [simple-grib](https://github.com/knoweather/simple-grib) — pure-Go GRIB1/GRIB2
   reader/writer, the source of grid definitions this library consumes;
 - simple-sat — the satellite data stack that uses `simple-proj` for resampling.
+
+## Credits
+
+The Go gopher was designed by [Renee French](https://reneefrench.blogspot.com/) and is
+licensed under [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). The logo in
+[`docs/logo.svg`](docs/logo.svg) is a derivative work based on that design.
 
 ## License
 

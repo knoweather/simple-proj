@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.svg" width="200" alt="戴护目镜、双手各举一块投影地图的 Go gopher">
+</p>
+
 # simple-proj
 
 [English](README.md) | **简体中文**
@@ -225,6 +229,12 @@ GRIB2 `grid_template_number` 的常见对应关系：
 - [simple-grib](https://github.com/knoweather/simple-grib) —— 纯 Go 的
   GRIB1/GRIB2 读写库，本库消费它解析出的网格定义；
 - simple-sat —— 使用 `simple-proj` 做重采样的气象卫星数据栈。
+
+## 署名
+
+Go gopher 由 [Renee French](https://reneefrench.blogspot.com/) 设计，采用
+[CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) 许可；
+[`docs/logo.svg`](docs/logo.svg) 的 logo 是基于该形象的演绎作品。
 
 ## 许可
 
